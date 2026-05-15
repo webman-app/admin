@@ -13,6 +13,7 @@
     "webman/captcha": "^1.0.0",
     "guzzlehttp/guzzle": "^7.5",
     "laravel/serializable-closure": "^1.0",
+    "composer/composer": "^2.9",
     "ext-json": "*",
     "ext-zip": "*"
   },
