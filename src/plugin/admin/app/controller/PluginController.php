@@ -5,11 +5,12 @@ namespace plugin\admin\app\controller;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use plugin\admin\app\common\Util;
-use process\Monitor;
+use app\process\Monitor;
 use support\exception\BusinessException;
 use support\Log;
 use support\Request;
 use support\Response;
+use Exception;
 use ZIPARCHIVE;
 use function array_diff;
 use function ini_get;
@@ -27,25 +28,23 @@ class PluginController extends Base
 
     /**
      * @param Request $request
-     * @return string
-     * @throws GuzzleException
+     * @return Response
      */
-    public function index(Request $request)
+    public function index(Request $request): Response
     {
-        $client = $this->httpClient();
-        $response = $client->get("/webman-admin/apps");
-        return (string)$response->getBody();
+        // 返回本地视图，覆盖远程页面
+        return view('admin/plugin/index');
     }
 
     /**
-     * 列表
+     * 列表（合并本地和远程插件）
      * @param Request $request
      * @return Response
      * @throws GuzzleException
      */
     public function list(Request $request): Response
     {
-        $installed = $this->getLocalPlugins();
+        $local_plugins = $this->getLocalPlugins(); // [name => version]
 
         $client = $this->httpClient();
         $query = $request->get();
@@ -54,20 +53,46 @@ class PluginController extends Base
         $content = $response->getBody()->getContents();
         $data = json_decode($content, true);
         if (!$data) {
-            $msg = "/api/app/list return $content";
-            echo "msg\r\n";
-            Log::error($msg);
+            Log::error("/api/app/list return $content");
             return $this->json(1, '获取数据出错');
         }
+
         $disabled = is_phar();
-        foreach ($data['data']['items'] as $key => $item) {
+        $remote_items = $data['data']['items'] ?? [];
+        $result_items = [];
+
+        // 先处理远程插件，同名则用本地版本覆盖
+        foreach ($remote_items as $item) {
             $name = $item['name'];
-            $data['data']['items'][$key]['installed'] = $installed[$name] ?? 0;
-            $data['data']['items'][$key]['disabled'] = $disabled;
+            if (isset($local_plugins[$name])) {
+                // 同名插件，优先显示本地版本信息
+                $item['installed'] = $local_plugins[$name];
+                $item['version'] = $local_plugins[$name]; // 使用本地版本号
+                $item['local'] = true; // 标记为本地插件
+            } else {
+                $item['installed'] = 0;
+                $item['local'] = false;
+            }
+            $item['disabled'] = $disabled;
+            $result_items[] = $item;
+            unset($local_plugins[$name]); // 从剩余本地插件中移除
         }
-        $items = $data['data']['items'];
-        $count = $data['data']['total'];
-        return json(['code' => 0, 'msg' => 'ok', 'data' => $items, 'count' => $count]);
+
+        // 再追加本地有但远程没有的插件
+        foreach ($local_plugins as $name => $version) {
+            $result_items[] = [
+                'name' => $name,
+                'author' => '本地',
+                'price' => '0',
+                'version' => $version,
+                'intro' => '本地插件（不在官方市场）',
+                'installed' => $version,
+                'local' => true,
+                'disabled' => $disabled,
+            ];
+        }
+
+        return json(['code' => 0, 'msg' => 'ok', 'data' => $result_items, 'count' => count($result_items)]);
     }
 
     /**
@@ -119,37 +144,17 @@ class PluginController extends Base
             if ($has_zip_archive) {
                 $zip = new ZipArchive;
                 $zip->open($zip_file);
-            }
-
-            $context = null;
-            $install_class = "\\plugin\\$name\\api\\Install";
-            if ($installed_version) {
-                // 执行beforeUpdate
-                if (class_exists($install_class) && method_exists($install_class, 'beforeUpdate')) {
-                    $context = call_user_func([$install_class, 'beforeUpdate'], $installed_version, $version);
-                }
-            }
-
-            if (!empty($zip)) {
-                $zip->extractTo(base_path() . '/plugin/');
-                unset($zip);
+                $this->executeInstallOrUpdate($name, $installed_version, $version, function () use ($zip) {
+                    $zip->extractTo(base_path() . '/plugin/');
+                    unset($zip);
+                });
             } else {
-                $this->unzipWithCmd($cmd);
+                $this->executeInstallOrUpdate($name, $installed_version, $version, function () use ($cmd) {
+                    $this->unzipWithCmd($cmd);
+                });
             }
 
             unlink($zip_file);
-
-            if ($installed_version) {
-                // 执行update更新
-                if (class_exists($install_class) && method_exists($install_class, 'update')) {
-                    call_user_func([$install_class, 'update'], $installed_version, $version, $context);
-                }
-            } else {
-                // 执行install安装
-                if (class_exists($install_class) && method_exists($install_class, 'install')) {
-                    call_user_func([$install_class, 'install'], $version);
-                }
-            }
         } finally {
             Util::resumeFileMonitor();
         }
@@ -157,6 +162,46 @@ class PluginController extends Base
         Util::reloadWebman();
 
         return $this->json(0);
+    }
+
+    /**
+     * 执行插件安装或更新（公共逻辑）
+     * 流程：beforeUpdate → 解压 → install/update
+     *
+     * @param string $name 插件名
+     * @param string|null $installed_version 已安装版本（null表示新安装）
+     * @param string|null $new_version 新版本号
+     * @param callable $extractCallback 解压回调
+     * @throws BusinessException
+     */
+    protected function executeInstallOrUpdate(string $name, ?string $installed_version, ?string $new_version, callable $extractCallback): void
+    {
+        $install_class = "\\plugin\\$name\\api\\Install";
+        $context = null;
+
+        // 已安装时执行 beforeUpdate
+        if ($installed_version) {
+            if (class_exists($install_class) && method_exists($install_class, 'beforeUpdate')) {
+                $context = call_user_func([$install_class, 'beforeUpdate'], $installed_version, $new_version);
+                if (is_array($context) && isset($context['error'])) {
+                    throw new BusinessException((string)$context['error']);
+                }
+            }
+        }
+
+        // 解压文件
+        $extractCallback();
+
+        // 执行 install 或 update
+        if ($installed_version) {
+            if (class_exists($install_class) && method_exists($install_class, 'update')) {
+                call_user_func([$install_class, 'update'], $installed_version, $new_version, $context);
+            }
+        } else {
+            if (class_exists($install_class) && method_exists($install_class, 'install')) {
+                call_user_func([$install_class, 'install'], $new_version);
+            }
+        }
     }
 
     /**
@@ -406,7 +451,155 @@ class PluginController extends Base
     {
         return $this->json(0, 'ok', $this->getLocalPlugins());
     }
-    
+
+    /**
+     * 导出插件为 ZIP
+     * @param Request $request
+     * @return Response
+     */
+    public function export(Request $request): Response
+    {
+        $name = $request->get('name');
+        if (!$name || !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+            return $this->json(1, '参数错误');
+        }
+
+        $plugin_path = base_path() . "/plugin/$name";
+        if (!is_dir($plugin_path)) {
+            return $this->json(1, '插件目录不存在');
+        }
+
+        // 临时目录
+        $temp_dir = base_path() . "/runtime/plugin";
+        if (!is_dir($temp_dir)) {
+            mkdir($temp_dir, 0755, true);
+        }
+
+        $zip_file = $temp_dir . "/$name.zip";
+        $zip = new ZipArchive();
+        if ($zip->open($zip_file, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            return $this->json(1, '无法创建 ZIP 文件');
+        }
+
+        $this->addDirToZip($zip, $plugin_path, $name);
+        $zip->close();
+
+        if (!is_file($zip_file)) {
+            return $this->json(1, 'ZIP 文件生成失败');
+        }
+
+        return response()->file($zip_file)->withHeader('Content-Disposition', "attachment; filename={$name}.zip");
+    }
+
+    /**
+     * 导入插件（上传 ZIP）
+     * @param Request $request
+     * @return Response
+     */
+    public function import(Request $request): Response
+    {
+        $file = current($request->file());
+        if (!$file || !$file->isValid()) {
+            return $this->json(1, '请选择要导入的 ZIP 文件');
+        }
+
+        // 检查 zip 扩展
+        if (!class_exists(ZipArchive::class, false)) {
+            return $this->json(1, '服务器未安装 zip 扩展');
+        }
+
+        $tmp_name = $file->getRealPath();
+        $zip = new ZipArchive();
+        if ($zip->open($tmp_name) !== true) {
+            return $this->json(1, '无效的 ZIP 文件');
+        }
+
+        // 获取 ZIP 内的插件目录名（第一个目录）
+        $plugin_name = null;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+            $name = $stat['name'];
+            if (str_contains($name, '/')) {
+                $parts = explode('/', $name);
+                if (count($parts) >= 2 && $parts[0] && !str_contains($parts[0], '.')) {
+                    $plugin_name = $parts[0];
+                    break;
+                }
+            }
+        }
+        $zip->close();
+
+        if (!$plugin_name || !preg_match('/^[a-zA-Z0-9_]+$/', $plugin_name)) {
+            return $this->json(1, 'ZIP 内未找到有效的插件目录');
+        }
+
+        $installed_version = $this->getPluginVersion($plugin_name);
+        $new_version = $this->getVersionFromZip($tmp_name, $plugin_name);
+        $extract_to = base_path() . '/plugin/';
+
+        Util::pauseFileMonitor();
+        try {
+            $this->executeInstallOrUpdate($plugin_name, $installed_version, $new_version, function () use ($tmp_name, $extract_to) {
+                $zip = new ZipArchive();
+                $zip->open($tmp_name);
+                $zip->extractTo($extract_to);
+                $zip->close();
+            });
+        } finally {
+            Util::resumeFileMonitor();
+        }
+
+        Util::reloadWebman();
+
+        return $this->json(0, $installed_version ? '更新成功' : '导入成功', ['name' => $plugin_name, 'update' => (bool)$installed_version]);
+    }
+
+    /**
+     * 从 ZIP 中读取插件版本号
+     * @param string $zip_file ZIP 文件路径
+     * @param string $plugin_name 插件名
+     * @return string|null
+     */
+    protected function getVersionFromZip(string $zip_file, string $plugin_name): ?string
+    {
+        $zip = new ZipArchive();
+        if ($zip->open($zip_file) !== true) {
+            return null;
+        }
+        $entry = "$plugin_name/config/app.php";
+        $content = $zip->getFromName($entry);
+        $zip->close();
+        if ($content === false) {
+            return null;
+        }
+        // 从文件内容中提取版本号（避免直接 include）
+        if (preg_match("/['\"]version['\"]\s*=>\s*['\"]([^'\"]+)['\"]/", $content, $matches)) {
+            return $matches[1];
+        }
+        return null;
+    }
+
+    /**
+     * 递归添加目录到 ZIP
+     * @param ZipArchive $zip
+     * @param string $folder
+     * @param string $parent_folder
+     */
+    protected function addDirToZip(ZipArchive $zip, string $folder, string $parent_folder): void
+    {
+        $files = scandir($folder);
+        foreach ($files as $file) {
+            if ($file === '.' || $file === '..') continue;
+            $full_path = $folder . DIRECTORY_SEPARATOR . $file;
+            $entry = $parent_folder . '/' . $file;
+            if (is_dir($full_path)) {
+                $this->addDirToZip($zip, $full_path, $entry);
+            } else {
+                $zip->addFile($full_path, $entry);
+            }
+        }
+    }
+
 
     /**
      * 获取本地插件版本
@@ -456,6 +649,7 @@ class PluginController extends Base
     /**
      * 获取httpclient
      * @return Client
+     * @throws Exception
      */
     protected function httpClient(): Client
     {
@@ -481,6 +675,7 @@ class PluginController extends Base
     /**
      * 获取下载httpclient
      * @return Client
+     * @throws Exception
      */
     protected function downloadClient(): Client
     {

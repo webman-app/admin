@@ -13,7 +13,8 @@
     "webman/captcha": "^1.0.0",
     "guzzlehttp/guzzle": "^7.5",
     "laravel/serializable-closure": "^1.0",
-    "ext-json": "*"
+    "ext-json": "*",
+    "ext-zip": "*"
   },
   "autoload": {
     "psr-4": {
