@@ -48,7 +48,7 @@
     <button class="pear-btn pear-btn-xs" lay-event="export">
         <i class="layui-icon layui-icon-export"></i>导出
     </button>
-    {{# if(d.name !== 'admin'){ }}
+    {{# if(d.can_uninstall){ }}
     <button class="pear-btn pear-btn-xs" lay-event="uninstall">
         <i class="layui-icon layui-icon-delete"></i>卸载
     </button>
@@ -63,8 +63,8 @@
 <!-- 导入弹窗模板 -->
 <div id="import-dialog" style="display:none;padding:20px;">
     <div class="layui-form">
-        <div class="layui-form-item">
-            <div class="layui-upload-drag" id="upload-area" style="width:100%;">
+        <div class="layui-form-item" style="text-align:center;">
+            <div class="layui-upload-drag" id="upload-area" style="display:inline-block;width:400px;box-sizing:border-box;">
                 <i class="layui-icon layui-icon-upload"></i>
                 <p>点击上传，或将 ZIP 文件拖拽到此处</p>
             </div>
@@ -98,11 +98,18 @@
         let selectedFile = null;
 
         let cols = [
-            { field: "name", title: "名称", width: 180 },
+            { field: "name", title: "名称", width: 150, templet: function(d) {
+                    var name = layui.util.escape(d.name || '');
+                    if (d.url) {
+                        var url = layui.util.escape(d.url);
+                        return '<a href="' + url + '" target="_blank" style="color:#1e9fff;">' + name + '</a>';
+                    }
+                    return name;
+                }},
+            { field: "title", title: "标题", minWidth: 250 },
             { field: "author", title: "作者", width: 120 },
             { field: "price", title: "价格", width: 80 },
             { field: "version", title: "版本", width: 90 },
-            { field: "intro", title: "简介", minWidth: 200 },
             { title: "操作", toolbar: "#table-bar", align: "center", width: 200, fixed: "right" },
         ];
 
@@ -110,6 +117,7 @@
             elem: "#data-table",
             url: LIST_API,
             page: true,
+            limit: 20,
             cols: [cols],
             skin: "line",
             size: "lg",
@@ -211,7 +219,7 @@
                 type: 1,
                 title: "导入本地插件",
                 shade: 0.1,
-                area: ["500px", "280px"],
+                area: ["450px", "auto"],
                 content: $("#import-dialog").html(),
                 success: function(layero, index) {
                     let $dialog = $(layero);
@@ -225,7 +233,8 @@
                         choose: function(obj) {
                             obj.preview(function(index, file, result) {
                                 selectedFile = file;
-                                $dialog.find("#upload-area").html('<i class="layui-icon layui-icon-ok-circle" style="color:#36b368;font-size:50px;"></i><p style="color:#36b368;">已选择: ' + file.name + '</p><p style="color:#999;">(' + (file.size / 1024).toFixed(1) + ' KB)</p>');
+                                var fileName = layui.util.escape(file.name);
+                                $dialog.find("#upload-area").html('<i class="layui-icon layui-icon-ok-circle" style="color:#36b368;font-size:50px;"></i><p style="color:#36b368;">已选择: ' + fileName + '</p><p style="color:#999;">(' + (file.size / 1024).toFixed(1) + ' KB)</p>');
                             });
                         }
                     });
@@ -258,8 +267,7 @@
                                 layer.closeAll("loading");
                                 if (res.code === 0) {
                                     layer.close(uploadIndex);
-                                    var tip = res.data && res.data.update ? "更新成功" : "导入成功";
-                                    layui.popup.success(tip, function() {
+                                    layui.popup.success("导入成功", function() {
                                         table.reload("data-table");
                                     });
                                 } else {

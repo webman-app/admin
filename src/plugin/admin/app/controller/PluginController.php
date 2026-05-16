@@ -2,31 +2,23 @@
 
 namespace plugin\admin\app\controller;
 
-use app\process\Monitor;
-use Composer\Command\RemoveCommand;
 use Composer\Factory;
 use Composer\IO\BufferIO;
 use Composer\Installer;
-use FilesystemIterator;
+use Exception;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use plugin\admin\app\common\Util;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
+use app\process\Monitor;
 use support\exception\BusinessException;
 use support\Log;
 use support\Request;
 use support\Response;
-use Symfony\Component\Console\Exception\ExceptionInterface;
-use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Console\Output\BufferedOutput;
-use Exception;
 use Throwable;
-use ZIPARCHIVE;
+use ZipArchive;
 use function array_diff;
 use function ini_get;
 use function scandir;
-use function escapeshellarg;
 use const DIRECTORY_SEPARATOR;
 use const PATH_SEPARATOR;
 
@@ -39,7 +31,7 @@ class PluginController extends Base
     protected $noNeedAuth = ['schema', 'captcha'];
 
     /**
-     * @param Request $request 请求
+     * @param Request $request
      * @return Response
      */
     public function index(Request $request): Response
@@ -50,68 +42,195 @@ class PluginController extends Base
 
     /**
      * 列表（合并本地和远程插件）
-     * @param Request $request 请求
+     * @param Request $request
      * @return Response
-     * @throws Exception|GuzzleException
+     * @throws GuzzleException
      */
     public function list(Request $request): Response
     {
-        $local_plugins = $this->getLocalPlugins(); // [name => version]
+        $local_plugins = $this->getLocalPlugins(); // [name => ['version' => ..., 'title' => ..., 'url' => ...]]
+        $disabled = is_phar();
 
+        // 缓存文件
+        $cache_file = runtime_path('plugin/app.json');
+        $cache_ttl = 86400; // 1天
+
+        // 检查缓存
+        $all_items = null;
+        if (is_file($cache_file) && (time() - filemtime($cache_file)) < $cache_ttl) {
+            $cached = json_decode(file_get_contents($cache_file), true);
+            if ($cached && isset($cached['items'])) {
+                $all_items = $cached['items'];
+            }
+        }
+
+        // 缓存不存在或过期，重新获取并合并
+        if ($all_items === null) {
+            $remote_items = $this->fetchRemoteApps();
+            $all_items = $this->mergePlugins($local_plugins, $remote_items, $disabled);
+
+            // 保存缓存
+            $cache_dir = dirname($cache_file);
+            if (!is_dir($cache_dir)) {
+                mkdir($cache_dir, 0755, true);
+            }
+            file_put_contents($cache_file, json_encode([
+                'items' => $all_items,
+                'updated_at' => time(),
+            ], JSON_UNESCAPED_UNICODE));
+        } else {
+            // 缓存命中，重新标记本地状态（本地插件可能已变化）
+            $all_items = $this->mergePlugins($local_plugins, $all_items, $disabled);
+        }
+
+        // 搜索过滤
+        $keyword = trim($request->get('name', ''));
+        if ($keyword !== '') {
+            $all_items = array_filter($all_items, function ($item) use ($keyword) {
+                $name = $item['name'] ?? '';
+                $title = $item['title'] ?? '';
+                return stripos($name, $keyword) !== false
+                    || stripos($title, $keyword) !== false;
+            });
+            $all_items = array_values($all_items); // 重置索引
+        }
+
+        // 分页
+        $total = count($all_items);
+        $page = (int)$request->get('page', 1);
+        $limit = (int)$request->get('limit', 20);
+        $offset = max(0, ($page - 1) * $limit);
+        $page_items = array_slice($all_items, $offset, $limit);
+
+        return json([
+            'code' => 0,
+            'msg' => 'ok',
+            'data' => $page_items,
+            'count' => $total,
+        ]);
+    }
+
+    /**
+     * 获取全部远程官方应用（limit=9999 一次性获取）
+     * @return array
+     * @throws GuzzleException|Exception
+     */
+    protected function fetchRemoteApps(): array
+    {
         $client = $this->httpClient();
-        $query = $request->get();
-        $query['version'] = $this->getAdminVersion();
-        $response = $client->get('/api/app/list', ['query' => $query]);
+        $response = $client->get('/api/app/list', [
+            'query' => [
+                'version' => $this->getAdminVersion(),
+                'limit' => 9999,
+            ]
+        ]);
         $content = $response->getBody()->getContents();
         $data = json_decode($content, true);
-        if (!$data) {
-            Log::error("/api/app/list return $content");
-            return $this->json(1, '获取数据出错');
+        if (!$data || !isset($data['data']['items'])) {
+            return [];
+        }
+        $items = $data['data']['items'];
+        // 关联数组转索引数组
+        if (!empty($items) && !isset($items[0])) {
+            $items = array_values($items);
+        }
+        return $items;
+    }
+
+    /**
+     * 合并本地和远程插件列表，本地优先
+     * @param array $local_plugins 本地插件列表，格式为 [name => ['version' => ..., 'title' => ..., 'url' => ...]]
+     * @param array $remote_items 远程插件列表，格式为 [name => ..., 'title' => ..., 'url' => ...]
+     * @param bool $disabled 是否禁用插件卸载
+     * @return array 合并后的插件列表
+     */
+    protected function mergePlugins(array $local_plugins, array $remote_items, bool $disabled): array
+    {
+        $result = [];
+        // 不可卸载的核心插件
+        $core_plugins = ['admin'];
+
+        // 远程插件建立索引，避免 O(n²) 查找
+        $remote_map = [];
+        foreach ($remote_items as $remote) {
+            $name = $remote['name'] ?? '';
+            if ($name) {
+                $remote_map[$name] = $remote;
+            }
         }
 
-        $disabled = is_phar();
-        $remote_items = $data['data']['items'] ?? [];
-        $result_items = [];
+        // 先处理本地插件，优先显示
+        foreach ($local_plugins as $name => $info) {
+            $version = $info['version'] ?? null;
+            $local_title = $info['title'] ?? $name;
+            $local_url = $info['url'] ?? '';
 
-        // 先处理远程插件，同名则用本地版本覆盖
-        foreach ($remote_items as $item) {
-            $name = $item['name'];
-            if (isset($local_plugins[$name])) {
-                // 同名插件，优先显示本地版本信息
-                $item['installed'] = $local_plugins[$name];
-                $item['version'] = $local_plugins[$name]; // 使用本地版本号
-                $item['local'] = true; // 标记为本地插件
+            if (isset($remote_map[$name])) {
+                // 有远程信息，合并（官方优先）
+                $item = array_merge($remote_map[$name], [
+                    'version' => $version,
+                    'installed' => $version,
+                    'local' => true,
+                    'disabled' => $disabled,
+                    'can_uninstall' => !in_array($name, $core_plugins),
+                ]);
+                if (empty($item['title'])) {
+                    $item['title'] = $local_title;
+                }
+                if (empty($item['url'])) {
+                    $item['url'] = $local_url;
+                }
             } else {
+                // 纯本地插件
+                $item = [
+                    'name' => $name,
+                    'title' => $local_title,
+                    'url' => $local_url,
+                    'version' => $version,
+                    'installed' => $version,
+                    'author' => '本地',
+                    'price' => '0',
+                    'local' => true,
+                    'disabled' => $disabled,
+                    'can_uninstall' => !in_array($name, $core_plugins),
+                ];
+            }
+            $result[] = $item;
+        }
+
+        // 追加远程有但本地没有的插件
+        foreach ($remote_items as $item) {
+            $name = $item['name'] ?? '';
+            if ($name && !isset($local_plugins[$name])) {
+                $item['title'] = $item['title'] ?? $name;
                 $item['installed'] = 0;
                 $item['local'] = false;
+                $item['disabled'] = $disabled;
+                $item['can_uninstall'] = true;
+                $result[] = $item;
             }
-            $item['disabled'] = $disabled;
-            $result_items[] = $item;
-            unset($local_plugins[$name]); // 从剩余本地插件中移除
         }
 
-        // 再追加本地有但远程没有的插件
-        foreach ($local_plugins as $name => $version) {
-            $result_items[] = [
-                'name' => $name,
-                'author' => '本地',
-                'price' => '0',
-                'version' => $version,
-                'intro' => '本地插件（不在官方市场）',
-                'installed' => $version,
-                'local' => true,
-                'disabled' => $disabled,
-            ];
-        }
+        return $result;
+    }
 
-        return json(['code' => 0, 'msg' => 'ok', 'data' => $result_items, 'count' => count($result_items)]);
+    /**
+     * 清除应用列表缓存
+     * @return void
+     */
+    protected function clearAppListCache(): void
+    {
+        $cache_file = runtime_path('plugin/app.json');
+        if (is_file($cache_file)) {
+            @unlink($cache_file);
+        }
     }
 
     /**
      * 安装
-     * @param Request $request 请求
+     * @param Request $request
      * @return Response
-     * @throws GuzzleException|BusinessException|Exception|ExceptionInterface
+     * @throws GuzzleException|BusinessException|Exception
      */
     public function install(Request $request): Response
     {
@@ -152,23 +271,50 @@ class PluginController extends Base
 
         Util::pauseFileMonitor();
         try {
-            // 解压zip到临时目录，然后执行安装流程
+            // 解压zip到plugin目录
             if ($has_zip_archive) {
                 $zip = new ZipArchive;
                 $zip->open($zip_file);
-                $this->executeInstallOrUpdate($name, $installed_version, $version, function ($temp_dir) use ($zip) {
-                    $zip->extractTo($temp_dir);
-                    $zip->close();
-                });
+            }
+
+            $context = null;
+            $install_class = "\\plugin\\$name\\api\\Install";
+            if ($installed_version) {
+                // 执行beforeUpdate
+                if (class_exists($install_class) && method_exists($install_class, 'beforeUpdate')) {
+                    $context = call_user_func([$install_class, 'beforeUpdate'], $installed_version, $version);
+                }
+            }
+
+            if (!empty($zip)) {
+                $zip->extractTo(base_path() . '/plugin/');
+                unset($zip);
             } else {
-                $this->executeInstallOrUpdate($name, $installed_version, $version, function ($temp_dir) use ($cmd) {
-                    // 修改命令解压到临时目录
-                    $temp_cmd = str_replace(base_path() . '/plugin/', $temp_dir . '/', $cmd);
-                    $this->unzipWithCmd($temp_cmd);
-                });
+                $this->unzipWithCmd($cmd);
             }
 
             unlink($zip_file);
+
+            if ($installed_version) {
+                // 执行update更新
+                if (class_exists($install_class) && method_exists($install_class, 'update')) {
+                    call_user_func([$install_class, 'update'], $installed_version, $version, $context);
+                }
+            } else {
+                // 执行install安装
+                if (class_exists($install_class) && method_exists($install_class, 'install')) {
+                    call_user_func([$install_class, 'install'], $version);
+                }
+            }
+
+            // 安装 composer 依赖包
+            $packages = $this->getPluginPackages($name);
+            if (!empty($packages)) {
+                $result = $this->syncComposerPackages($packages, true);
+                if (!$result['success']) {
+                    Log::error("Plugin $name require packages failed: " . $result['message']);
+                }
+            }
         } finally {
             Util::resumeFileMonitor();
         }
@@ -179,357 +325,8 @@ class PluginController extends Base
     }
 
     /**
-     * 执行插件安装或更新（公共逻辑）
-     * 流程：beforeUpdate → 临时解压 → 安装composer依赖 → 移动到plugin目录 → install/update
-     *
-     * @param string $name 插件名
-     * @param string|null $installed_version 已安装版本（null表示新安装）
-     * @param string|null $new_version 新版本号
-     * @param callable $extractCallback 解压回调（解压到临时目录）
-     * @throws BusinessException|ExceptionInterface|Exception
-     */
-    protected function executeInstallOrUpdate(string $name, ?string $installed_version, ?string $new_version, callable $extractCallback): void
-    {
-        $install_class = "\\plugin\\$name\\api\\Install";
-        $context = null;
-
-        // 读取旧 pack_list（在解压前，从已安装的插件目录读取）
-        $old_pack_list = [];
-        $plugin_dir = base_path() . "/plugin/$name";
-        if ($installed_version && is_dir($plugin_dir)) {
-            $old_pack_list = $this->getPackList($plugin_dir);
-        }
-
-        // 已安装时执行 beforeUpdate
-        if ($installed_version) {
-            if (class_exists($install_class) && method_exists($install_class, 'beforeUpdate')) {
-                $context = call_user_func([$install_class, 'beforeUpdate'], $installed_version, $new_version);
-                if (is_array($context) && isset($context['error'])) {
-                    throw new BusinessException((string)$context['error']);
-                }
-            }
-        }
-
-        // 临时解压目录
-        $temp_dir = base_path() . "/runtime/plugin/$name";
-
-        // 清理并创建临时目录
-        if (is_dir($temp_dir)) {
-            $this->removeDir($temp_dir);
-        }
-        $this->ensureDirectory($temp_dir);
-
-        try {
-            // 解压到临时目录
-            $extractCallback($temp_dir);
-
-            // 从临时目录读取新版本号（如果传入的为null）
-            if ($new_version === null) {
-                $new_version = $this->getPluginVersionFromPath($temp_dir);
-            }
-
-            // 读取新 pack_list
-            $new_pack_list = $this->getPackList($temp_dir);
-
-            // 对比新旧 pack_list，处理 composer 依赖
-            $this->syncComposerDependencies($old_pack_list, $new_pack_list);
-
-            // 移动到 plugin 目录
-            if (is_dir($plugin_dir)) {
-                $this->removeDir($plugin_dir);
-            }
-            $this->ensureDirectory(dirname($plugin_dir));
-            rename($temp_dir, $plugin_dir);
-
-            // 执行 install 或 update
-            if ($installed_version) {
-                if (class_exists($install_class) && method_exists($install_class, 'update')) {
-                    call_user_func([$install_class, 'update'], $installed_version, $new_version, $context);
-                }
-            } else {
-                if (class_exists($install_class) && method_exists($install_class, 'install')) {
-                    call_user_func([$install_class, 'install'], $new_version);
-                }
-            }
-        } finally {
-            // 清理临时目录（如果还在）
-            if (is_dir($temp_dir)) {
-                $this->removeDir($temp_dir);
-            }
-        }
-    }
-
-    /**
-     * 从指定路径读取插件的 pack_list
-     * 支持两种格式：
-     * - 索引数组: ['package/name', ...] → 转换为 ['package/name' => '*']
-     * - 关联数组: ['package/name' => '^1.0', ...]
-     * - 混合数组: ['package/name', 'package/name2' => '^1.0']
-     *
-     * @param string $plugin_path 插件目录路径
-     * @return array 包名 => 版本约束（或 '*')
-     */
-    protected function getPackList(string $plugin_path): array
-    {
-        $app_config_file = $plugin_path . '/config/app.php';
-        if (!is_file($app_config_file)) {
-            return [];
-        }
-        $config = include $app_config_file;
-        $pack_list = $config['pack_list'] ?? [];
-
-        // 统一转换为关联数组格式
-        $normalized = [];
-        foreach ($pack_list as $key => $value) {
-            if (is_int($key)) {
-                // 纯包名格式 ['package/name']
-                if (is_string($value) && str_contains($value, '/')) {
-                    $normalized[$value] = '*';
-                }
-            } else {
-                // 包名 => 版本格式 ['package/name' => '^1.0']
-                if (is_string($key) && str_contains($key, '/')) {
-                    $normalized[$key] = is_string($value) ? $value : '*';
-                }
-            }
-        }
-
-        return $normalized;
-    }
-
-    /**
-     * 从指定路径读取插件版本
-     *
-     * @param string $path 插件目录路径
-     * @return string|null 插件版本号（或 null）
-     */
-    protected function getPluginVersionFromPath(string $path): ?string
-    {
-        $app_file = $path . '/config/app.php';
-        if (!is_file($app_file)) {
-            return null;
-        }
-        $config = include $app_file;
-        return $config['version'] ?? null;
-    }
-
-    /**
-     * 同步 composer 依赖包（对比新旧 pack_list）
-     * pack_list 格式（已由 getPackList 统一处理）：
-     * - ['package/name' => 'version_constraint']  指定版本
-     * - ['package/name' => '*']                    最新版本
-     *
-     * - 新增的包：安装
-     * - 移除的包：删除
-     * - 都有的包：更新版本约束后执行 composer update
-     *
-     * @param array $old_pack_list 旧 pack_list（已安装插件）
-     * @param array $new_pack_list 新 pack_list（新版本插件）
-     * @return void
-     * @throws Exception
-     */
-    protected function syncComposerDependencies(array $old_pack_list, array $new_pack_list): void
-    {
-        $basePath = base_path();
-        $composerJsonPath = $basePath . '/composer.json';
-
-        if (!is_file($composerJsonPath)) {
-            throw new BusinessException('项目根目录缺少 composer.json');
-        }
-
-        $composerConfig = json_decode(file_get_contents($composerJsonPath), true);
-        if (!$composerConfig) {
-            throw new BusinessException('composer.json 解析失败');
-        }
-
-        if (!isset($composerConfig['require'])) {
-            $composerConfig['require'] = [];
-        }
-
-        // 1. 找出需要删除的包（旧有新无）
-        $to_remove = [];
-        foreach ($old_pack_list as $package => $version) {
-            if (!is_string($package) || !str_contains($package, '/')) {
-                continue;
-            }
-            if (!isset($new_pack_list[$package])) {
-                $to_remove[] = $package;
-            }
-        }
-
-        // 2. 找出需要安装的包（新有旧无）和需要更新的包（新旧都有但版本不同）
-        $to_install = [];
-        $to_update = [];
-        foreach ($new_pack_list as $package => $version) {
-            if (!is_string($package) || !str_contains($package, '/')) {
-                continue;
-            }
-            if (!isset($old_pack_list[$package])) {
-                // 新增的包
-                $to_install[$package] = $version;
-            } elseif (isset($composerConfig['require'][$package]) && $composerConfig['require'][$package] !== $version) {
-                // 版本约束变化
-                $to_update[$package] = $version;
-            }
-        }
-
-        // 3. 执行删除
-        if (!empty($to_remove)) {
-            $this->removeComposerDependencies($to_remove);
-        }
-
-        // 4. 合并需要安装和更新的包，统一写入 composer.json
-        $need_composer_run = false;
-
-        foreach ($to_install as $package => $version) {
-            $composerConfig['require'][$package] = $version;
-            $need_composer_run = true;
-        }
-
-        foreach ($to_update as $package => $version) {
-            $composerConfig['require'][$package] = $version;
-            $need_composer_run = true;
-        }
-
-        // 5. 如果有变更，执行 composer install/update
-        if ($need_composer_run) {
-            // 写回 composer.json
-            file_put_contents(
-                $composerJsonPath,
-                json_encode($composerConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
-            );
-
-            Log::info("Composer: updating composer.json with packages: " . json_encode(array_merge(array_keys($to_install), array_keys($to_update))));
-
-            $io = new BufferIO();
-            $composer = Factory::create($io, $composerJsonPath);
-
-            // 执行 composer 安装/更新
-            if (!empty($to_install) || !empty($to_update)) {
-                // 对于新包，需要设置白名单强制安装
-                if (!empty($to_install)) {
-                    $installer = Installer::create($io, $composer);
-                    $installer->setDryRun(false);
-                    $installer->setDownloadOnly(false);
-                    $installer->setUpdate(true);
-                    $installer->setPreferDist();
-                    // 设置要安装的包白名单
-                    $installer->setUpdateAllowList(array_keys($to_install));
-
-                    Log::info("Composer: running install for new packages: " . json_encode(array_keys($to_install)));
-
-                    $exit_code = $installer->run();
-
-                    $output = $io->getOutput();
-                    Log::info("Composer install output: " . $output);
-
-                    if ($exit_code !== 0) {
-                        Log::error("Composer install failed with exit code $exit_code: " . $output);
-                        throw new BusinessException("Composer 安装依赖失败，请检查日志");
-                    }
-                }
-
-                // 对于版本更新的包
-                if (!empty($to_update)) {
-                    $installer = Installer::create($io, $composer);
-                    $installer->setDryRun(false);
-                    $installer->setDownloadOnly(false);
-                    $installer->setUpdate(true);
-                    $installer->setPreferDist();
-                    $installer->setUpdateAllowList(array_keys($to_update));
-
-                    Log::info("Composer: running update for packages: " . json_encode(array_keys($to_update)));
-
-                    $exit_code = $installer->run();
-
-                    $output = $io->getOutput();
-                    Log::info("Composer update output: " . $output);
-
-                    if ($exit_code !== 0) {
-                        Log::error("Composer update failed with exit code $exit_code: " . $output);
-                        throw new BusinessException("Composer 更新依赖失败，请检查日志");
-                    }
-                }
-            }
-
-            Log::info("Composer sync result: success");
-        } else {
-            Log::info("Composer: no packages need to be installed or updated");
-        }
-    }
-
-    /**
-     * 移除 composer 依赖包
-     * 使用 Composer RemoveCommand（纯 PHP API，不需要 shell 命令）
-     * 会自动检查其他包是否依赖，有依赖则不删除
-     *
-     * @param array $packages 要移除的包名列表
-     * @return void
-     */
-    protected function removeComposerDependencies(array $packages): void
-    {
-        if (empty($packages)) {
-            return;
-        }
-
-        $basePath = base_path();
-        $composerJsonPath = $basePath . '/composer.json';
-
-        if (!is_file($composerJsonPath)) {
-            return;
-        }
-
-        $composerConfig = json_decode(file_get_contents($composerJsonPath), true);
-        if (!$composerConfig) {
-            return;
-        }
-
-        // 过滤出确实在 require 中的包
-        $to_remove = [];
-        foreach ($packages as $package) {
-            if (!is_string($package) || !str_contains($package, '/')) {
-                continue;
-            }
-            if (isset($composerConfig['require'][$package])) {
-                $to_remove[] = $package;
-            }
-        }
-
-        if (empty($to_remove)) {
-            return;
-        }
-
-        try {
-            $io = new BufferIO();
-            $composer = Factory::create($io, $composerJsonPath);
-
-            $removeCommand = new RemoveCommand();
-            $removeCommand->setComposer($composer);
-            $removeCommand->setIO($io);
-
-            $input = new ArrayInput([
-                'packages' => $to_remove,
-                '--update-with-dependencies' => true,
-            ]);
-            $output = new BufferedOutput();
-
-            $exit_code = $removeCommand->run($input, $output);
-
-            if ($exit_code !== 0) {
-                $error_output = $output->fetch();
-                Log::warning("Composer remove warning: " . $error_output);
-            } else {
-                Log::info("Composer removed packages: " . json_encode($to_remove));
-            }
-        } catch (Throwable $e) {
-            Log::warning("Composer remove failed (non-blocking): " . $e->getMessage());
-        }
-    }
-
-    /**
      * 卸载
-     *
-     * @param Request $request 请求
+     * @param Request $request
      * @return Response
      */
     public function uninstall(Request $request): Response
@@ -547,8 +344,8 @@ class PluginController extends Base
             return $this->json(1, '已经删除');
         }
 
-        // 读取 pack_list（在删除插件目录前）
-        $pack_list = $this->getPackList($path);
+        // 获取 packages 用于卸载后移除依赖
+        $packages = $this->getPluginPackages($name);
 
         // 执行uninstall卸载
         $install_class = "\\plugin\\$name\\api\\Install";
@@ -564,20 +361,22 @@ class PluginController extends Base
                 Monitor::pause();
             }
             try {
-                $this->removeDir($path);
+                $this->rmDir($path);
             } finally {
                 if ($monitor_support_pause) {
                     Monitor::resume();
                 }
             }
         }
+        clearstatcache();
+
+        // 清除应用列表缓存
+        $this->clearAppListCache();
 
         // 移除 composer 依赖包
-        if (!empty($pack_list)) {
-            $this->removeComposerDependencies(array_keys($pack_list));
+        if (!empty($packages)) {
+            $this->syncComposerPackages($packages, false, $name);
         }
-
-        clearstatcache();
 
         Util::reloadWebman();
 
@@ -586,8 +385,7 @@ class PluginController extends Base
 
     /**
      * 支付
-     *
-     * @param Request $request 请求
+     * @param Request $request
      * @return string|Response
      * @throws GuzzleException|Exception
      */
@@ -608,8 +406,7 @@ class PluginController extends Base
 
     /**
      * 登录验证码
-     *
-     * @param Request $request 请求
+     * @param Request $request
      * @return Response
      * @throws GuzzleException|Exception
      */
@@ -627,8 +424,7 @@ class PluginController extends Base
 
     /**
      * 登录官网
-     *
-     * @param Request $request 请求
+     * @param Request $request
      * @return Response|string
      * @throws GuzzleException|Exception
      */
@@ -664,13 +460,12 @@ class PluginController extends Base
 
     /**
      * 获取zip下载url
-     *
-     * @param string $name 插件名称
-     * @param string $version 插件版本
-     * @return mixed 下载url和文件名
-     * @throws GuzzleException|Exception
+     * @param $name
+     * @param $version
+     * @return mixed
+     * @throws BusinessException|GuzzleException|Exception
      */
-    protected function getDownloadUrl(string $name, string $version): mixed
+    protected function getDownloadUrl($name, $version): mixed
     {
         $client = $this->httpClient();
         $response = $client->get("/app/download/$name?version=$version");
@@ -693,13 +488,12 @@ class PluginController extends Base
 
     /**
      * 下载zip
-     *
-     * @param string $url 下载url
-     * @param string $file 文件路径
+     * @param $url
+     * @param $file
      * @return void
      * @throws BusinessException|GuzzleException|Exception
      */
-    protected function downloadZipFile(string $url, string $file): void
+    protected function downloadZipFile($url, $file): void
     {
         $client = $this->downloadClient();
         $response = $client->get($url);
@@ -717,33 +511,29 @@ class PluginController extends Base
 
     /**
      * 获取系统支持的解压命令
-     *
-     * @param string $zip_file zip文件路径
-     * @param string $extract_to 解压路径
-     * @return string|null 解压命令
+     * @param $zip_file
+     * @param $extract_to
+     * @return mixed
      */
-    protected function getUnzipCmd(string $zip_file, string $extract_to): ?string
+    protected function getUnzipCmd($zip_file, $extract_to): mixed
     {
-        $safe_zip = escapeshellarg($zip_file);
-        $safe_extract = escapeshellarg($extract_to);
         if ($cmd = $this->findCmd('unzip')) {
-            $cmd = "$cmd -o -qq $safe_zip -d $safe_extract";
+            $cmd = "$cmd -o -qq $zip_file -d $extract_to";
         } else if ($cmd = $this->findCmd('7z')) {
-            $cmd = "$cmd x -bb0 -y $safe_zip -o$safe_extract";
+            $cmd = "$cmd x -bb0 -y $zip_file -o$extract_to";
         } else if ($cmd = $this->findCmd('7zz')) {
-            $cmd = "$cmd x -bb0 -y $safe_zip -o$safe_extract";
+            $cmd = "$cmd x -bb0 -y $zip_file -o$extract_to";
         }
         return $cmd;
     }
 
     /**
      * 使用解压命令解压
-     *
-     * @param string $cmd 解压命令
+     * @param $cmd
      * @return void
      * @throws BusinessException
      */
-    protected function unzipWithCmd(string $cmd): void
+    protected function unzipWithCmd($cmd): void
     {
         $desc = [
             0 => ["pipe", "r"],
@@ -764,8 +554,7 @@ class PluginController extends Base
 
     /**
      * 获取已安装的插件列表
-     *
-     * @return array 插件名称和版本
+     * @return array
      */
     protected function getLocalPlugins(): array
     {
@@ -773,17 +562,38 @@ class PluginController extends Base
         $installed = [];
         $plugin_names = array_diff(scandir(base_path() . '/plugin/'), array('.', '..')) ?: [];
         foreach ($plugin_names as $plugin_name) {
-            if (is_dir(base_path() . "/plugin/$plugin_name") && $version = $this->getPluginVersion($plugin_name)) {
-                $installed[$plugin_name] = $version;
+            if (is_dir(base_path() . "/plugin/$plugin_name")) {
+                $info = $this->getPluginInfo($plugin_name);
+                if ($info['version']) {
+                    $installed[$plugin_name] = $info;
+                }
             }
         }
         return $installed;
     }
 
     /**
+     * 获取插件信息（版本、标题、链接）
+     * @param string $name
+     * @return array
+     */
+    protected function getPluginInfo(string $name): array
+    {
+        $config_file = base_path() . "/plugin/$name/config/app.php";
+        if (!is_file($config_file)) {
+            return ['version' => null, 'title' => $name, 'url' => ''];
+        }
+        $config = include $config_file;
+        return [
+            'version' => $config['version'] ?? null,
+            'title' => $config['title'] ?? $name,
+            'url' => $config['url'] ?? '',
+        ];
+    }
+
+    /**
      * 获取已安装的插件列表
-     *
-     * @param Request $request 请求
+     * @param Request $request
      * @return Response
      */
     public function getInstalledPlugins(Request $request): Response
@@ -793,8 +603,7 @@ class PluginController extends Base
 
     /**
      * 导出插件为 ZIP
-     *
-     * @param Request $request 请求
+     * @param Request $request
      * @return Response
      */
     public function export(Request $request): Response
@@ -834,10 +643,8 @@ class PluginController extends Base
 
     /**
      * 导入插件（上传 ZIP）
-     *
-     * @param Request $request 请求
+     * @param Request $request
      * @return Response
-     * @throws ExceptionInterface
      */
     public function import(Request $request): Response
     {
@@ -876,134 +683,50 @@ class PluginController extends Base
             return $this->json(1, 'ZIP 内未找到有效的插件目录');
         }
 
-        $installed_version = $this->getPluginVersion($plugin_name);
-        $new_version = $this->getVersionFromZip($tmp_name, $plugin_name);
+        // 检查插件是否已存在
+        $plugin_path = base_path() . "/plugin/$plugin_name";
+        if (is_dir($plugin_path)) {
+            return $this->json(1, "插件 $plugin_name 已存在，请先卸载后再导入");
+        }
 
+        // 解压到 plugin 目录
+        $extract_to = base_path() . '/plugin/';
         Util::pauseFileMonitor();
         try {
-            $this->executeInstallOrUpdate($plugin_name, $installed_version, $new_version, function ($temp_dir) use ($tmp_name, $plugin_name) {
-                $zip = new ZipArchive();
-                $zip->open($tmp_name);
-                $zip->extractTo($temp_dir);
-                $zip->close();
-
-                // 如果 ZIP 包含顶层目录（如 pluginname/xxx），需要把内容移到 temp_dir 根目录
-                $nested_dir = $temp_dir . '/' . $plugin_name;
-                if (is_dir($nested_dir)) {
-                    // 把 nested_dir 里的内容移到 temp_dir
-                    $this->moveDirectoryContents($nested_dir, $temp_dir);
-                    $this->removeDir($nested_dir);
-                }
-            });
+            $zip = new ZipArchive();
+            $zip->open($tmp_name);
+            $zip->extractTo($extract_to);
+            $zip->close();
         } finally {
             Util::resumeFileMonitor();
         }
 
+        // 执行安装
+        $version = $this->getPluginVersion($plugin_name);
+        $install_class = "\\plugin\\$plugin_name\\api\\Install";
+        if (class_exists($install_class) && method_exists($install_class, 'install')) {
+            call_user_func([$install_class, 'install'], $version);
+        }
+
+        // 安装 composer 依赖包
+        $packages = $this->getPluginPackages($plugin_name);
+        if (!empty($packages)) {
+            $this->syncComposerPackages($packages, true);
+        }
+
         Util::reloadWebman();
 
-        return $this->json(0, $installed_version ? '更新成功' : '导入成功', ['name' => $plugin_name, 'update' => (bool)$installed_version]);
-    }
+        // 清除应用列表缓存
+        $this->clearAppListCache();
 
-    /**
-     * 确保目录存在
-     *
-     * @param string $dir 目录路径
-     * @return void
-     */
-    protected function ensureDirectory(string $dir): void
-    {
-        if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
-        }
-    }
-
-    /**
-     * 递归删除目录
-     *
-     * @param string $dir 目录路径
-     * @return void
-     */
-    protected function removeDir(string $dir): void
-    {
-        if (!is_dir($dir)) return;
-        $items = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
-        );
-        foreach ($items as $item) {
-            if ($item->isDir()) {
-                @rmdir($item->getRealPath());
-            } else {
-                @unlink($item->getRealPath());
-            }
-        }
-        @rmdir($dir);
-    }
-
-    /**
-     * 移动目录内容到目标目录
-     *
-     * @param string $source 源目录路径
-     * @param string $destination 目标目录路径
-     * @return void
-     */
-    protected function moveDirectoryContents(string $source, string $destination): void
-    {
-        if (!is_dir($source) || !is_dir($destination)) {
-            return;
-        }
-        $items = scandir($source);
-        foreach ($items as $item) {
-            if ($item === '.' || $item === '..') {
-                continue;
-            }
-            $srcPath = $source . '/' . $item;
-            $destPath = $destination . '/' . $item;
-            if (is_dir($srcPath)) {
-                if (!is_dir($destPath)) {
-                    mkdir($destPath, 0755, true);
-                }
-                $this->moveDirectoryContents($srcPath, $destPath);
-                @rmdir($srcPath);
-            } else {
-                rename($srcPath, $destPath);
-            }
-        }
-    }
-
-    /**
-     * 从 ZIP 中读取插件版本号
-     *
-     * @param string $zip_file ZIP 文件路径
-     * @param string $plugin_name 插件名
-     * @return string|null 版本号或 null
-     */
-    protected function getVersionFromZip(string $zip_file, string $plugin_name): ?string
-    {
-        $zip = new ZipArchive();
-        if ($zip->open($zip_file) !== true) {
-            return null;
-        }
-        $entry = "$plugin_name/config/app.php";
-        $content = $zip->getFromName($entry);
-        $zip->close();
-        if ($content === false) {
-            return null;
-        }
-        // 从文件内容中提取版本号（避免直接 include）
-        if (preg_match("/['\"]version['\"]\s*=>\s*['\"]([^'\"]+)['\"]/", $content, $matches)) {
-            return $matches[1];
-        }
-        return null;
+        return $this->json(0, '导入成功', ['name' => $plugin_name]);
     }
 
     /**
      * 递归添加目录到 ZIP
-     *
-     * @param ZipArchive $zip ZIP 实例
-     * @param string $folder 目录路径
-     * @param string $parent_folder 父目录路径
-     * @return void
+     * @param ZipArchive $zip
+     * @param string $folder
+     * @param string $parent_folder
      */
     protected function addDirToZip(ZipArchive $zip, string $folder, string $parent_folder): void
     {
@@ -1023,18 +746,17 @@ class PluginController extends Base
 
     /**
      * 获取本地插件版本
-     * @param string $name 插件名
+     * @param $name
      * @return string|null
      */
-    protected function getPluginVersion(string $name): ?string
+    protected function getPluginVersion($name): ?string
     {
-        return $this->getPluginVersionFromPath(base_path() . "/plugin/$name");
+        return $this->getPluginInfo($name)['version'];
     }
 
     /**
      * 获取webman/admin版本
-     *
-     * @return string 版本号
+     * @return string
      */
     protected function getAdminVersion(): string
     {
@@ -1042,16 +764,63 @@ class PluginController extends Base
     }
 
     /**
-     * 获取 HTTP 公共配置
-     *
-     * @param array $overrides 重写配置
-     * @return array HTTP 公共配置
+     * 删除目录
+     * @param $src
+     * @return void
+     */
+    protected function rmDir($src): void
+    {
+        $dir = opendir($src);
+        while (false !== ($file = readdir($dir))) {
+            if (($file != '.') && ($file != '..')) {
+                $full = $src . '/' . $file;
+                if (is_dir($full)) {
+                    $this->rmDir($full);
+                } else {
+                    unlink($full);
+                }
+            }
+        }
+        closedir($dir);
+        rmdir($src);
+    }
+
+    /**
+     * 获取httpclient
+     * @return Client
      * @throws Exception
      */
-    protected function httpClientOptions(array $overrides = []): array
+    protected function httpClient(): Client
     {
+        // 下载zip
         $options = [
+            'base_uri' => config('plugin.admin.app.plugin_market_host'),
             'timeout' => 60,
+            'connect_timeout' => 5,
+            'verify' => false,
+            'http_errors' => false,
+            'headers' => [
+                'Referer' => \request()->fullUrl(),
+                'User-Agent' => 'webman-app-plugin',
+                'Accept' => 'application/json;charset=UTF-8',
+            ]
+        ];
+        if ($token = session('app-plugin-token')) {
+            $options['headers']['Cookie'] = "PHPSID=$token;";
+        }
+        return new Client($options);
+    }
+
+    /**
+     * 获取下载httpclient
+     * @return Client
+     * @throws Exception
+     */
+    protected function downloadClient(): Client
+    {
+        // 下载zip
+        $options = [
+            'timeout' => 59,
             'connect_timeout' => 5,
             'verify' => false,
             'http_errors' => false,
@@ -1063,45 +832,15 @@ class PluginController extends Base
         if ($token = session('app-plugin-token')) {
             $options['headers']['Cookie'] = "PHPSID=$token;";
         }
-        return array_merge($options, $overrides);
-    }
-
-    /**
-     * 获取httpclient（访问插件市场）
-     *
-     * @return Client httpclient实例
-     * @throws Exception
-     */
-    protected function httpClient(): Client
-    {
-        return new Client($this->httpClientOptions([
-            'base_uri' => config('plugin.admin.app.plugin_market_host'),
-            'headers' => [
-                'Accept' => 'application/json;charset=UTF-8',
-            ],
-        ]));
-    }
-
-    /**
-     * 获取下载httpclient
-     *
-     * @return Client 下载httpclient实例
-     * @throws Exception
-     */
-    protected function downloadClient(): Client
-    {
-        return new Client($this->httpClientOptions([
-            'timeout' => 59,
-        ]));
+        return new Client($options);
     }
 
     /**
      * 查找系统命令
-     *
-     * @param string $name 命令名
-     * @param string|null $default 默认路径
-     * @param array $extraDirs 额外目录路径
-     * @return mixed|string|null 命令路径或 null 如果未找到
+     * @param string $name
+     * @param string|null $default
+     * @param array $extraDirs
+     * @return mixed|string|null
      */
     protected function findCmd(string $name, ?string $default = null, array $extraDirs = []): mixed
     {
@@ -1138,6 +877,176 @@ class PluginController extends Base
         }
 
         return $default;
+    }
+
+    /**
+     * 获取插件的 packages 配置
+     * @param string $name 插件名
+     * @return array
+     */
+    protected function getPluginPackages(string $name): array
+    {
+        $config_file = base_path() . "/plugin/$name/config/app.php";
+        if (!is_file($config_file)) {
+            return [];
+        }
+        $config = include $config_file;
+        $packages = $config['packages'] ?? [];
+        if (!is_array($packages)) {
+            return [];
+        }
+        // 规范化版本约束：没有星号的默认加上星号
+        $normalized = [];
+        foreach ($packages as $key => $value) {
+            if (is_int($key)) {
+                // 格式: ["vendor/package"]
+                $package = $value;
+                $version = '*';
+            } else {
+                // 格式: ["vendor/package" => "version"]
+                $package = $key;
+                $version = $value ?: '*';
+            }
+            $normalized[$package] = $version;
+        }
+        return $normalized;
+    }
+
+    /**
+     * 获取所有已安装插件依赖的包列表（排除指定插件）
+     * @param string $excludePlugin 要排除的插件名
+     * @return array [package => true]
+     */
+    protected function getAllPluginsPackages(string $excludePlugin = ''): array
+    {
+        $packages = [];
+        $plugin_names = array_diff(scandir(base_path() . '/plugin/'), array('.', '..')) ?: [];
+        foreach ($plugin_names as $plugin_name) {
+            if ($plugin_name === $excludePlugin) {
+                continue;
+            }
+            if (is_dir(base_path() . "/plugin/$plugin_name")) {
+                $packages = $this->getPluginPackages($plugin_name);
+                foreach ($packages as $package => $version) {
+                    $packages[$package] = true;
+                }
+            }
+        }
+        return $packages;
+    }
+
+    /**
+     * 检查 composer 包是否已安装
+     * @param string $package 包名
+     * @return bool
+     */
+    protected function isPackageInstalled(string $package): bool
+    {
+        $vendor_dir = base_path() . '/vendor/' . $package;
+        return is_dir($vendor_dir);
+    }
+
+    /**
+     * 同步 composer 依赖包（安装或移除）
+     * @param array $packages 包列表 [package => version]
+     * @param bool $isInstall true=安装, false=移除
+     * @param string $excludePlugin 移除时要排除的插件名
+     * @return array 结果 ['success' => bool, 'message' => string]
+     */
+    protected function syncComposerPackages(array $packages, bool $isInstall, string $excludePlugin = ''): array
+    {
+        if (empty($packages)) {
+            return ['success' => true, 'message' => '无需处理依赖包'];
+        }
+
+        // 过滤需要处理的包
+        if ($isInstall) {
+            $to_process = array_filter($packages, function ($package) {
+                return !$this->isPackageInstalled($package);
+            }, ARRAY_FILTER_USE_KEY);
+            if (empty($to_process)) {
+                return ['success' => true, 'message' => '所有依赖包已安装'];
+            }
+        } else {
+            // 获取所有其他插件依赖的包（排除当前要卸载的插件）
+            $otherPluginsPackages = $this->getAllPluginsPackages($excludePlugin);
+            $to_process = [];
+            foreach ($packages as $package => $version) {
+                if (!$this->isPackageInstalled($package)) {
+                    continue;
+                }
+                // 检查其他插件是否依赖此包
+                if (isset($otherPluginsPackages[$package])) {
+                    continue;
+                }
+                $to_process[] = $package;
+            }
+            if (empty($to_process)) {
+                return ['success' => true, 'message' => '没有需要移除的依赖包'];
+            }
+        }
+
+        try {
+            // 更新 composer.json
+            $composerJsonPath = base_path() . '/composer.json';
+            $composerConfig = json_decode(file_get_contents($composerJsonPath), true);
+            if (!$composerConfig || !isset($composerConfig['require'])) {
+                return ['success' => false, 'message' => '无法读取 composer.json'];
+            }
+
+            if ($isInstall) {
+                foreach ($to_process as $package => $version) {
+                    $composerConfig['require'][$package] = $version;
+                }
+            } else {
+                foreach ($to_process as $package) {
+                    unset($composerConfig['require'][$package]);
+                }
+            }
+
+            file_put_contents(
+                $composerJsonPath,
+                json_encode($composerConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n"
+            );
+
+            // 执行 composer install/update
+            $io = new BufferIO();
+            $composer = Factory::create($io, $composerJsonPath);
+
+            $installer = Installer::create($io, $composer);
+            $installer->setDryRun(false);
+            $installer->setDownloadOnly(false);
+            $installer->setUpdate(true);
+            $installer->setPreferDist(true);
+
+            if ($isInstall) {
+                // 安装时只更新指定包
+                $installer->setUpdateAllowList(array_keys($to_process));
+            } else {
+                // 移除时指定包，并处理传递依赖（自动清理孤儿依赖）
+                $installer->setUpdateAllowList($to_process);
+                $installer->setUpdateAllowTransitiveDependencies(\Composer\DependencyResolver\Request::UPDATE_LISTED_WITH_TRANSITIVE_DEPS_NO_ROOT_REQUIRE);
+            }
+
+            $result = $installer->run();
+
+            if ($result !== 0) {
+                return [
+                    'success' => false,
+                    'message' => ($isInstall ? '安装' : '移除') . '依赖包失败: ' . $io->getOutput()
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => ($isInstall ? '成功安装' : '成功移除') . '依赖包: ' . implode(', ', $isInstall ? array_keys($to_process) : $to_process)
+            ];
+        } catch (Throwable $e) {
+            return [
+                'success' => false,
+                'message' => ($isInstall ? '安装' : '移除') . '依赖包异常: ' . $e->getMessage()
+            ];
+        }
     }
 
 }
