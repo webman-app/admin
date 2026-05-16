@@ -49,7 +49,6 @@ class PluginController extends Base
     public function list(Request $request): Response
     {
         $local_plugins = $this->getLocalPlugins(); // [name => ['version' => ..., 'title' => ..., 'url' => ...]]
-        $disabled = is_phar();
 
         // 缓存文件
         $cache_file = runtime_path('plugin/app.json');
@@ -67,7 +66,7 @@ class PluginController extends Base
         // 缓存不存在或过期，重新获取并合并
         if ($all_items === null) {
             $remote_items = $this->fetchRemoteApps();
-            $all_items = $this->mergePlugins($local_plugins, $remote_items, $disabled);
+            $all_items = $this->mergePlugins($local_plugins, $remote_items);
 
             // 保存缓存
             $cache_dir = dirname($cache_file);
@@ -80,7 +79,7 @@ class PluginController extends Base
             ], JSON_UNESCAPED_UNICODE));
         } else {
             // 缓存命中，重新标记本地状态（本地插件可能已变化）
-            $all_items = $this->mergePlugins($local_plugins, $all_items, $disabled);
+            $all_items = $this->mergePlugins($local_plugins, $all_items);
         }
 
         // 搜索过滤
@@ -141,14 +140,11 @@ class PluginController extends Base
      * 合并本地和远程插件列表，本地优先
      * @param array $local_plugins 本地插件列表，格式为 [name => ['version' => ..., 'title' => ..., 'url' => ...]]
      * @param array $remote_items 远程插件列表，格式为 [name => ..., 'title' => ..., 'url' => ...]
-     * @param bool $disabled 是否禁用插件卸载
      * @return array 合并后的插件列表
      */
-    protected function mergePlugins(array $local_plugins, array $remote_items, bool $disabled): array
+    protected function mergePlugins(array $local_plugins, array $remote_items): array
     {
         $result = [];
-        // 不可卸载的核心插件
-        $core_plugins = ['admin'];
 
         // 远程插件建立索引，避免 O(n²) 查找
         $remote_map = [];
@@ -171,8 +167,6 @@ class PluginController extends Base
                     'version' => $version,
                     'installed' => $version,
                     'local' => true,
-                    'disabled' => $disabled,
-                    'can_uninstall' => !in_array($name, $core_plugins),
                 ]);
                 if (empty($item['title'])) {
                     $item['title'] = $local_title;
@@ -191,8 +185,6 @@ class PluginController extends Base
                     'author' => '本地',
                     'price' => '0',
                     'local' => true,
-                    'disabled' => $disabled,
-                    'can_uninstall' => !in_array($name, $core_plugins),
                 ];
             }
             $result[] = $item;
@@ -205,8 +197,6 @@ class PluginController extends Base
                 $item['title'] = $item['title'] ?? $name;
                 $item['installed'] = 0;
                 $item['local'] = false;
-                $item['disabled'] = $disabled;
-                $item['can_uninstall'] = true;
                 $result[] = $item;
             }
         }

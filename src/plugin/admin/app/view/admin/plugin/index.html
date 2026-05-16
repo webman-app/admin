@@ -45,10 +45,16 @@
 
 <script type="text/html" id="table-bar">
     {{# if(d.installed){ }}
+    {{# var hasUpdate = d.releases && d.releases.length > 0 && d.releases[d.releases.length - 1] !== d.installed; }}
+    {{# if(hasUpdate){ }}
+    <button class="pear-btn pear-btn-xs pear-btn-warm" lay-event="update">
+        <i class="layui-icon layui-icon-refresh-3"></i>更新
+    </button>
+    {{# } }}
     <button class="pear-btn pear-btn-xs" lay-event="export">
         <i class="layui-icon layui-icon-export"></i>导出
     </button>
-    {{# if(d.can_uninstall){ }}
+    {{# if(d.name !== 'admin'){ }}
     <button class="pear-btn pear-btn-xs" lay-event="uninstall">
         <i class="layui-icon layui-icon-delete"></i>卸载
     </button>
@@ -110,7 +116,7 @@
             { field: "author", title: "作者", width: 120 },
             { field: "price", title: "价格", width: 80 },
             { field: "version", title: "版本", width: 90 },
-            { title: "操作", toolbar: "#table-bar", align: "center", width: 200, fixed: "right" },
+            { title: "操作", toolbar: "#table-bar", align: "center", width: 320, fixed: "right" },
         ];
 
         table.render({
@@ -129,6 +135,8 @@
             let data = obj.data;
             if (obj.event === "install") {
                 installPlugin(data);
+            } else if (obj.event === "update") {
+                updatePlugin(data);
             } else if (obj.event === "export") {
                 exportPlugin(data);
             } else if (obj.event === "uninstall") {
@@ -177,6 +185,36 @@
                             layui.popup.failure(res.msg);
                         } else {
                             layui.popup.success("安装成功", function() {
+                                table.reload("data-table");
+                            });
+                        }
+                    }
+                });
+            });
+        }
+
+        function updatePlugin(data) {
+            var latestVersion = data.releases && data.releases.length > 0 ? data.releases[data.releases.length - 1] : data.version;
+            layer.confirm("确定将 " + data.name + " 插件从 " + data.installed + " 更新到 " + latestVersion + "?", { icon: 3, title: "更新确认" }, function(index) {
+                layer.close(index);
+                let loading = layer.load();
+                $.ajax({
+                    url: INSTALL_API,
+                    data: { name: data.name, version: latestVersion },
+                    dataType: "json",
+                    type: "post",
+                    success: function(res) {
+                        layer.close(loading);
+                        if (res.code === -1) {
+                            layer.open({
+                                type: 2, title: "登录", shade: 0.1,
+                                area: ["400px", "300px"],
+                                content: LOGIN_URL
+                            });
+                        } else if (res.code) {
+                            layui.popup.failure(res.msg);
+                        } else {
+                            layui.popup.success("更新成功", function() {
                                 table.reload("data-table");
                             });
                         }
