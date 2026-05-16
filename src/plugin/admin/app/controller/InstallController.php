@@ -379,8 +379,8 @@ EOF;
             $dsn .= "dbname=$database";
         }
         $params = [
-            \PDO::MYSQL_ATTR_INIT_COMMAND => "set names utf8mb4",
-            \PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
+            \Pdo\Mysql::ATTR_INIT_COMMAND => "set names utf8mb4",
+            \Pdo\Mysql::ATTR_USE_BUFFERED_QUERY => true,
             \PDO::ATTR_EMULATE_PREPARES => false,
             \PDO::ATTR_TIMEOUT => 5,
             \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
