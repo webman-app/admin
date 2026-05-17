@@ -673,10 +673,24 @@ class PluginController extends Base
             return $this->json(1, 'ZIP 内未找到有效的插件目录');
         }
 
-        // 检查插件是否已存在
+        // 插件已存在时，先执行旧版本的卸载函数再覆盖安装
         $plugin_path = base_path() . "/plugin/$plugin_name";
         if (is_dir($plugin_path)) {
-            return $this->json(1, "插件 $plugin_name 已存在，请先卸载后再导入");
+            $old_version = $this->getPluginVersion($plugin_name);
+            $install_class = "\\plugin\\$plugin_name\\api\\Install";
+            if (class_exists($install_class) && method_exists($install_class, 'uninstall')) {
+                try {
+                    call_user_func([$install_class, 'uninstall'], $old_version);
+                } catch (Throwable $e) {
+                    Log::warning("Import plugin $plugin_name: old uninstall failed: " . $e->getMessage());
+                }
+            }
+            // 删除旧插件目录
+            clearstatcache();
+            if (is_dir($plugin_path)) {
+                $this->rmDir($plugin_path);
+            }
+            clearstatcache();
         }
 
         // 解压到 plugin 目录
