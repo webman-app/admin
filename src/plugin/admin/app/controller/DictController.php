@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -26,7 +26,7 @@ class DictController extends Base
      */
     public function index(): Response
     {
-        return raw_view('dict/index');
+        return view('dict/index');
     }
 
     /**
@@ -72,7 +72,7 @@ class DictController extends Base
             $values = (array)$request->post('value', []);
             Dict::save($name, $values);
         }
-        return raw_view('dict/insert');
+        return view('dict/insert');
     }
 
     /**
@@ -93,7 +93,7 @@ class DictController extends Base
             }
             Dict::save($name, $request->post('value'));
         }
-        return raw_view('dict/update');
+        return view('dict/update');
     }
 
     /**

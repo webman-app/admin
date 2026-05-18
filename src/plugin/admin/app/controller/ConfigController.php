@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -27,7 +27,7 @@ class ConfigController extends Base
      */
     public function index(): Response
     {
-        return raw_view('config/index');
+        return view('config/index');
     }
 
     /**

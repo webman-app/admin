@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -42,7 +42,7 @@ class UploadController extends Crud
      */
     public function index(): Response
     {
-        return raw_view('upload/index');
+        return view('upload/index');
     }
 
     /**
@@ -52,7 +52,7 @@ class UploadController extends Crud
      */
     public function attachment(): Response
     {
-        return raw_view('upload/attachment');
+        return view('upload/attachment');
     }
 
     /**
@@ -83,7 +83,7 @@ class UploadController extends Crud
     public function update(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            return raw_view('upload/update');
+            return view('upload/update');
         }
         return parent::update($request);
     }
@@ -97,7 +97,7 @@ class UploadController extends Crud
     public function insert(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            return raw_view('upload/insert');
+            return view('upload/insert');
         }
         $file = current($request->file());
         if (!$file || !$file->isValid()) {

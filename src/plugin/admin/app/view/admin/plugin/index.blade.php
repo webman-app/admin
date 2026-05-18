@@ -44,26 +44,26 @@
 </script>
 
 <script type="text/html" id="table-bar">
-    {{# if(d.installed){ }}
-    {{# var hasUpdate = d.releases && d.releases.length > 0 && d.releases[d.releases.length - 1] !== d.installed; }}
-    {{# if(hasUpdate){ }}
+    @{{# if(d.installed){ }}
+    @{{# var hasUpdate = d.releases && d.releases.length > 0 && d.releases[d.releases.length - 1] !== d.installed; }}
+    @{{# if(hasUpdate){ }}
     <button class="pear-btn pear-btn-xs pear-btn-warm" lay-event="update">
         <i class="layui-icon layui-icon-refresh-3"></i>更新
     </button>
-    {{# } }}
+    @{{# } }}
     <button class="pear-btn pear-btn-xs" lay-event="export">
         <i class="layui-icon layui-icon-export"></i>导出
     </button>
-    {{# if(d.name !== 'admin'){ }}
+    @{{# if(d.name !== 'admin'){ }}
     <button class="pear-btn pear-btn-xs" lay-event="uninstall">
         <i class="layui-icon layui-icon-delete"></i>卸载
     </button>
-    {{# } }}
-    {{# } else { }}
+    @{{# } }}
+    @{{# } else { }}
     <button class="pear-btn pear-btn-xs" lay-event="install">
         <i class="layui-icon layui-icon-app"></i>安装
     </button>
-    {{# } }}
+    @{{# } }}
 </script>
 
 <!-- 导入弹窗模板 -->

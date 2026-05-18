@@ -10,7 +10,6 @@
 
         <!-- 顶部查询表单 -->
 
-
         <!-- 数据表格 -->
         <div class="layui-card">
             <div class="layui-card-body">
@@ -30,10 +29,10 @@
 
         <!-- 表格行工具栏 -->
         <script type="text/html" id="table-bar">
-            {{# if(d.id!==1&&d.pid&&!d.isRoot){ }}
+            @{{# if(d.id!==1&&d.pid&&!d.isRoot){ }}
             <button class="layui-btn layui-btn-xs tool-btn" lay-event="edit" permission="app.admin.role.update">编辑</button>
             <button class="layui-btn layui-btn-xs tool-btn" lay-event="remove" permission="app.admin.role.delete">删除</button>
-            {{# } }}
+            @{{# } }}
         </script>
 
         <script src="/app/admin/component/layui/layui.js?v=2.8.12"></script>

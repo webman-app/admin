@@ -18,7 +18,7 @@
 
             <div class="mainBox">
                 <div class="main-container mr-5">
-                    <input type="hidden" name="table" value="<?=htmlspecialchars($table)?>">
+                    <input type="hidden" name="table" value="{{ $table }}">
                     <div class="layui-form-item">
                         <label class="layui-form-label required">菜单名</label>
                         <div class="layui-input-block">
@@ -40,13 +40,13 @@
                     <div class="layui-form-item">
                         <label class="layui-form-label required">控制器</label>
                         <div class="layui-input-block">
-                            <input type="text" name="controller" value="<?=$controller?>" class="layui-input" required lay-verify="required">
+                            <input type="text" name="controller" value="{{ $controller }}" class="layui-input" required lay-verify="required">
                         </div>
                     </div>
                     <div class="layui-form-item">
                         <label class="layui-form-label required">模型</label>
                         <div class="layui-input-block">
-                            <input type="text" name="model" value="<?=$model?>" class="layui-input" required lay-verify="required">
+                            <input type="text" name="model" value="{{ $model }}" class="layui-input" required lay-verify="required">
                         </div>
                     </div>
                     <div class="layui-form-item">

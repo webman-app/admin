@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -29,7 +29,7 @@ class TableController extends Base
      */
     public function index(): Response
     {
-        return raw_view('table/index');
+        return view('table/index');
     }
 
     /**
@@ -45,7 +45,7 @@ class TableController extends Base
         $form = Layui::buildForm($table, 'search');
         $table_info = Util::getSchema($table, 'table');
         $primary_key = $table_info['primary_key'][0] ?? null;
-        return raw_view('table/view', [
+        return view('table/view', [
             'form' => $form,
             'table' => $table,
             'primary_key' => $primary_key,
@@ -99,7 +99,7 @@ class TableController extends Base
     public function create(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            return raw_view('table/create', []);
+            return view('table/create', []);
         }
         $data = $request->post();
         $table_name = Util::filterAlphaNum($data['table']);
@@ -198,7 +198,7 @@ class TableController extends Base
     public function modify(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            return raw_view('table/modify', ['table' => $request->get('table')]);
+            return view('table/modify', ['table' => $request->get('table')]);
         }
         $data = $request->post();
         $old_table_name = Util::filterAlphaNum($data['old_table']);
@@ -403,7 +403,7 @@ class TableController extends Base
         $model_class = $inflector->classify($inflector->singularize($table_basename));
         $base_path = '/app/admin';
         if ($request->method() === 'GET') {
-            return raw_view('table/crud', [
+            return view('table/crud', [
                 'table' => $table_name,
                 'model' => "$base_path/model/$model_class.php",
                 'controller' => "$base_path/controller/{$model_class}Controller.php",
@@ -1316,7 +1316,7 @@ EOF;
         if ($request->method() === 'GET') {
             $table = $request->get('table');
             $form = Layui::buildForm($table);
-            return raw_view('table/insert', [
+            return view('table/insert', [
                 'form' => $form,
                 'table' => $table
             ]);
@@ -1370,7 +1370,7 @@ EOF;
             $primary_key = $table_info['primary_key'][0] ?? null;
             $value = htmlspecialchars($request->get($primary_key, ''));
             $form = Layui::buildForm($table, 'update');
-            return raw_view('table/update', [
+            return view('table/update', [
                 'primary_key' => $primary_key,
                 'value' => $value,
                 'form' => $form,

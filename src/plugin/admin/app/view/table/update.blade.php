@@ -14,10 +14,10 @@
             <div class="mainBox">
                 <div class="main-container mr-5">
 
-                    <input type="hidden" name="<?=htmlspecialchars($primary_key)?>" value="<?=htmlspecialchars($value)?>">
-                    <input type="hidden" name="table" value="<?=htmlspecialchars($table)?>">
+                    <input type="hidden" name="{{ $primary_key }}" value="{{ $value }}">
+                    <input type="hidden" name="table" value="{{ $table }}">
 
-                    <?=$form->html(5)?>
+                    {!! $form->html(5) !!}
 
                 </div>
             </div>
@@ -67,7 +67,7 @@
                             }
                         });
 
-                        <?=$form->js(6)?>
+                        {!! $form->js(6) !!}
 
                         // ajax返回失败
                         if (res.code) {

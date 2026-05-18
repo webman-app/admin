@@ -11,7 +11,7 @@
             <div class="layui-card-body">
                 <form class="layui-form top-search-from">
 
-                    <?=$form->html(5)?>
+                    {!! $form->html(5) !!}
 
                     <div class="layui-form-item layui-inline">
                         <label class="layui-form-label"></label>
@@ -57,8 +57,8 @@
 
         <script>
 
-            const TABLE_NAME = "<?=htmlspecialchars($table)?>";
-            const PRIMARY_KEY = "<?=htmlspecialchars($primary_key)?>";
+            const TABLE_NAME = @json($table);
+            const PRIMARY_KEY = @json($primary_key);
             const SELECT_API = "/app/admin/table/select?table=" + TABLE_NAME;
             const UPDATE_API = "/app/admin/table/update";
             const DELETE_API = "/app/admin/table/delete";
@@ -66,7 +66,7 @@
             const INSERT_URL = "/app/admin/table/insert?table=" + TABLE_NAME;
             const UPDATE_URL = "/app/admin/table/update?table=" + TABLE_NAME;
 
-            <?=$form->js(3)?>
+            {!! $form->js(3) !!}
 
             layui.use(["table", "form","common", "popup", "util"], function() {
                 let table = layui.table;

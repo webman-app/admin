@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -49,7 +49,7 @@ class AccountController extends Crud
      */
     public function index()
     {
-        return raw_view('account/index');
+        return view('account/index');
     }
 
     /**

@@ -13,8 +13,8 @@
 
             <div class="mainBox">
                 <div class="main-container mr-5">
-                    <input type="hidden" name="table" value="<?=htmlspecialchars($table)?>">
-                    <?= $form->html(5)?>
+                    <input type="hidden" name="table" value="{{ $table }}">
+                    {!! $form->html(5) !!}
                 </div>
             </div>
 
@@ -40,7 +40,7 @@
 
             const INSERT_API = "/app/admin/table/insert";
 
-            <?=$form->js(3)?>
+            {!! $form->js(3) !!}
 
             layui.use(["form", "popup"], function () {
 

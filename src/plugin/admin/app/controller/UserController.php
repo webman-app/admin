@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -35,7 +35,7 @@ class UserController extends Crud
      */
     public function index(): Response
     {
-        return raw_view('user/index');
+        return view('user/index');
     }
 
     /**
@@ -49,7 +49,7 @@ class UserController extends Crud
         if ($request->method() === 'POST') {
             return parent::insert($request);
         }
-        return raw_view('user/insert');
+        return view('user/insert');
     }
 
     /**
@@ -63,7 +63,7 @@ class UserController extends Crud
         if ($request->method() === 'POST') {
             return parent::update($request);
         }
-        return raw_view('user/update');
+        return view('user/update');
     }
 
 }

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -37,7 +37,7 @@ class IndexController
     {
         clearstatcache();
         if (!is_file(base_path('plugin/admin/config/database.php'))) {
-            return raw_view('index/install');
+            return view('index/install');
         }
         $admin = admin();
         $name = 'system_config';
@@ -46,9 +46,9 @@ class IndexController
         $title = $config['logo']['title'] ?? 'webman admin';
         $logo = $config['logo']['image'] ?? '/app/admin/admin/images/logo.png';
         if (!$admin) {
-            return raw_view('account/login',['logo'=>$logo,'title'=>$title]);
+            return view('account/login',['logo'=>$logo,'title'=>$title]);
         }
-        return raw_view('index/index',[
+        return view('index/index',[
             'site_title' => $title,
         ]);
     }
@@ -81,7 +81,7 @@ class IndexController
                 ->where('created_at', '<', "$date 23:59:59")->count();
         }
 
-        return raw_view('index/dashboard', [
+        return view('index/dashboard', [
             'today_user_count' => $today_user_count,
             'day7_user_count' => $day7_user_count,
             'day30_user_count' => $day30_user_count,

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -17,7 +17,7 @@ class DevController
      */
     public function formBuild()
     {
-        return raw_view('dev/form-build');
+        return view('dev/form-build');
     }
 
 }

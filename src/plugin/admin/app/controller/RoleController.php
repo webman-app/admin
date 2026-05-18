@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -42,7 +42,7 @@ class RoleController extends Crud
      */
     public function index(): Response
     {
-        return raw_view('role/index');
+        return view('role/index');
     }
 
     /**
@@ -89,7 +89,7 @@ class RoleController extends Crud
             $id = $this->doInsert($data);
             return $this->json(0, 'ok', ['id' => $id]);
         }
-        return raw_view('role/insert');
+        return view('role/insert');
     }
 
     /**
@@ -101,7 +101,7 @@ class RoleController extends Crud
     public function update(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            return raw_view('role/update');
+            return view('role/update');
         }
         [$id, $data] = $this->updateInput($request);
         $is_supper_admin = Auth::isSuperAdmin();

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -44,7 +44,7 @@ class RuleController extends Crud
      */
     public function index(): Response
     {
-        return raw_view('rule/index');
+        return view('rule/index');
     }
 
     /**
@@ -225,7 +225,7 @@ class RuleController extends Crud
     public function insert(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            return raw_view('rule/insert');
+            return view('rule/insert');
         }
         $data = $this->insertInput($request);
         if (empty($data['type'])) {
@@ -250,7 +250,7 @@ class RuleController extends Crud
     public function update(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            return raw_view('rule/update');
+            return view('rule/update');
         }
         [$id, $data] = $this->updateInput($request);
         if (!$row = $this->model->find($id)) {

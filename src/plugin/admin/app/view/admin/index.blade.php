@@ -7,40 +7,34 @@
         <link rel="stylesheet" href="/app/admin/css/style.css" />
     </head>
     <body class="pear-container">
-    
         <!-- 顶部查询表单 -->
         <div class="layui-card">
             <div class="layui-card-body">
                 <form class="layui-form top-search-from">
-                    
                     <div class="layui-form-item">
                         <label class="layui-form-label">用户名</label>
                         <div class="layui-input-block">
                             <input type="text" name="username" value="" class="layui-input">
                         </div>
                     </div>
-                    
                     <div class="layui-form-item">
                         <label class="layui-form-label">昵称</label>
                         <div class="layui-input-block">
                             <input type="text" name="nickname" value="" class="layui-input">
                         </div>
                     </div>
-                    
                     <div class="layui-form-item">
                         <label class="layui-form-label">邮箱</label>
                         <div class="layui-input-block">
                             <input type="text" name="email" value="" class="layui-input">
                         </div>
                     </div>
-                    
                     <div class="layui-form-item">
                         <label class="layui-form-label">手机</label>
                         <div class="layui-input-block">
                             <input type="text" name="mobile" value="" class="layui-input">
                         </div>
                     </div>
-                    
                     <div class="layui-form-item">
                         <label class="layui-form-label">创建时间</label>
                         <div class="layui-input-block">
@@ -51,7 +45,6 @@
                             </div>
                         </div>
                     </div>
-                    
                     <div class="layui-form-item layui-inline">
                         <label class="layui-form-label"></label>
                         <button class="layui-btn layui-btn-md layui-btn-primary" lay-submit lay-filter="table-query">
@@ -68,7 +61,6 @@
                 </form>
             </div>
         </div>
-        
         <!-- 数据表格 -->
         <div class="layui-card">
             <div class="layui-card-body">
@@ -88,10 +80,10 @@
 
         <!-- 表格行工具栏 -->
         <script type="text/html" id="table-bar">
-            {{# if(d.show_toolbar){ }}
+            @{{# if(d.show_toolbar){ }}
             <button class="layui-btn layui-btn-xs tool-btn" lay-event="edit" permission="app.admin.admin.update">编辑</button>
             <button class="layui-btn layui-btn-xs tool-btn" lay-event="remove" permission="app.admin.admin.delete">删除</button>
-            {{# } }}
+            @{{# } }}
         </script>
 
         <script src="/app/admin/component/layui/layui.js?v=2.8.12"></script>
@@ -107,7 +99,6 @@
             const DELETE_API = "/app/admin/admin/delete";
             const INSERT_URL = "/app/admin/admin/insert";
             const UPDATE_URL = "/app/admin/admin/update";
-            
             // 字段 创建时间 created_at
             layui.use(["laydate"], function() {
                 layui.laydate.render({
@@ -115,7 +106,6 @@
                     range: ["#created_at-date-start", "#created_at-date-end"],
                 });
             })
-            
             // 表格渲染
             layui.use(["table", "form", "common", "popup", "util"], function() {
                 let table = layui.table;
@@ -123,7 +113,6 @@
                 let $ = layui.$;
                 let common = layui.common;
                 let util = layui.util;
-                
 				// 表头参数
 				let cols = [
 					{
@@ -215,7 +204,6 @@
                         width: 130,
 					}
 				];
-				
 				// 渲染表格
 				function render()
 				{
@@ -238,7 +226,6 @@
 				        }
 				    });
 				}
-				
 				// 获取表格中下拉或树形组件数据
 				let apis = [];
 				apis.push(["roles", "/app/admin/role/select?format=select"]);
@@ -275,7 +262,6 @@
 				if (!count) {
 				    render();
 				}
-				
                 // 编辑或删除行事件
                 table.on("tool(data-table)", function(obj) {
                     if (obj.event === "remove") {
@@ -306,7 +292,6 @@
                     })
                     return false;
                 });
-                
                 // 表格顶部搜索重置事件
                 form.on("submit(table-reset)", function(data) {
                     table.reload("data-table", {

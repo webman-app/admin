@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace plugin\admin\app\controller;
 
@@ -54,7 +54,7 @@ class AdminController extends Crud
      */
     public function index(): Response
     {
-        return raw_view('admin/index');
+        return view('admin/index');
     }
 
     /**
@@ -116,7 +116,7 @@ class AdminController extends Crud
             }
             return $this->json(0, 'ok', ['id' => $admin_id]);
         }
-        return raw_view('admin/insert');
+        return view('admin/insert');
     }
 
     /**
@@ -175,7 +175,7 @@ class AdminController extends Crud
             return $this->json(0);
         }
 
-        return raw_view('admin/update');
+        return view('admin/update');
     }
 
     /**

@@ -62,16 +62,15 @@
                 </script>
 
                 <script type="text/html" id="col-value">
-                    <input type="text" name="value[{{ d.LAY_NUM-1 }}][value]" placeholder="值" autocomplete="off" class="layui-input" value="{{ d.value }}">
-                    <input type="hidden" name="value[{{ d.LAY_NUM-1 }}][_field_id]" value="{{ d._field_id }}">
+                    <input type="text" name="value[@{{ d.LAY_NUM-1 }}][value]" placeholder="值" autocomplete="off" class="layui-input" value="@{{ d.value }}">
+                    <input type="hidden" name="value[@{{ d.LAY_NUM-1 }}][_field_id]" value="@{{ d._field_id }}">
                 </script>
 
                 <script type="text/html" id="col-name">
-                    <input type="text" name="value[{{ d.LAY_NUM-1 }}][name]" placeholder="标题" autocomplete="off" class="layui-input" value="{{ d.name }}">
+                    <input type="text" name="value[@{{ d.LAY_NUM-1 }}][name]" placeholder="标题" autocomplete="off" class="layui-input" value="@{{ d.name }}">
                 </script>
 
             </div>
-
 
         </div>
     </div>
