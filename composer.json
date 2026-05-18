@@ -14,9 +14,10 @@
     "guzzlehttp/guzzle": "^7.5",
     "laravel/serializable-closure": "^1.0",
     "composer/composer": "^2.9",
+    "webman/console": "^2.1",
+    "webman/blade": "^1.5",
     "ext-json": "*",
-    "ext-zip": "*",
-    "webman/console": "^2.1"
+    "ext-zip": "*"
   },
   "autoload": {
     "psr-4": {
