@@ -15,7 +15,8 @@
     "laravel/serializable-closure": "^1.0",
     "composer/composer": "^2.9",
     "ext-json": "*",
-    "ext-zip": "*"
+    "ext-zip": "*",
+    "webman/console": "^2.1"
   },
   "autoload": {
     "psr-4": {
