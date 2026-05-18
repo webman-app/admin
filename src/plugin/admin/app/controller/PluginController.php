@@ -12,6 +12,7 @@ use plugin\admin\app\common\Util;
 use app\process\Monitor;
 use support\exception\BusinessException;
 use support\Log;
+use support\Plugin;
 use support\Request;
 use support\Response;
 use Throwable;
@@ -285,6 +286,16 @@ class PluginController extends Base
 
             unlink($zip_file);
 
+            // 安装 composer 依赖包
+            $packages = $this->getPluginPackages($name);
+            if (!empty($packages)) {
+                $result = $this->syncComposerPackages($packages, true, '', $installed_version !== null);
+                if (!$result['success']) {
+                    $this->rmDir($base_path);
+                    throw new BusinessException("Plugin $name require packages failed: " . $result['message']);
+                }
+            }
+
             if ($installed_version) {
                 // 执行update更新
                 if (class_exists($install_class) && method_exists($install_class, 'update')) {
@@ -294,15 +305,6 @@ class PluginController extends Base
                 // 执行install安装
                 if (class_exists($install_class) && method_exists($install_class, 'install')) {
                     call_user_func([$install_class, 'install'], $version);
-                }
-            }
-
-            // 安装 composer 依赖包
-            $packages = $this->getPluginPackages($name);
-            if (!empty($packages)) {
-                $result = $this->syncComposerPackages($packages, true);
-                if (!$result['success']) {
-                    Log::error("Plugin $name require packages failed: " . $result['message']);
                 }
             }
         } finally {
@@ -673,49 +675,54 @@ class PluginController extends Base
             return $this->json(1, 'ZIP 内未找到有效的插件目录');
         }
 
-        // 插件已存在时，先执行旧版本的卸载函数再覆盖安装
-        $plugin_path = base_path() . "/plugin/$plugin_name";
-        if (is_dir($plugin_path)) {
-            $old_version = $this->getPluginVersion($plugin_name);
-            $install_class = "\\plugin\\$plugin_name\\api\\Install";
-            if (class_exists($install_class) && method_exists($install_class, 'uninstall')) {
-                try {
-                    call_user_func([$install_class, 'uninstall'], $old_version);
-                } catch (Throwable $e) {
-                    Log::warning("Import plugin $plugin_name: old uninstall failed: " . $e->getMessage());
-                }
-            }
-            // 删除旧插件目录
-            clearstatcache();
-            if (is_dir($plugin_path)) {
-                $this->rmDir($plugin_path);
-            }
-            clearstatcache();
-        }
-
         // 解压到 plugin 目录
         $extract_to = base_path() . '/plugin/';
+        $plugin_path = base_path() . "/plugin/$plugin_name";
         Util::pauseFileMonitor();
         try {
+            // 插件已存在时，先执行旧版本的卸载函数再覆盖安装
+            if (is_dir($plugin_path)) {
+                $old_version = $this->getPluginVersion($plugin_name);
+                $install_class = "\\plugin\\$plugin_name\\api\\Install";
+                if (class_exists($install_class) && method_exists($install_class, 'uninstall')) {
+                    try {
+                        call_user_func([$install_class, 'uninstall'], $old_version);
+                    } catch (Throwable $e) {
+                        Log::warning("Import plugin $plugin_name: old uninstall failed: " . $e->getMessage());
+                    }
+                }
+                // 删除旧插件目录
+                clearstatcache();
+                if (is_dir($plugin_path)) {
+                    $this->rmDir($plugin_path);
+                }
+                clearstatcache();
+            }
+
+            // 解压 ZIP 到 plugin 目录
             $zip = new ZipArchive();
             $zip->open($tmp_name);
             $zip->extractTo($extract_to);
             $zip->close();
+
+            // 安装 composer 依赖包
+            $packages = $this->getPluginPackages($plugin_name);
+            if (!empty($packages)) {
+                $result = $this->syncComposerPackages($packages, true, '', true);
+                if (!$result['success']) {
+                    $this->rmDir($plugin_path);
+                    throw new BusinessException("Plugin $plugin_name require packages failed: " . $result['message']);
+                }
+            }
+
+            // 执行安装
+            $version = $this->getPluginVersion($plugin_name);
+            $install_class = "\\plugin\\$plugin_name\\api\\Install";
+            if (class_exists($install_class) && method_exists($install_class, 'install')) {
+                call_user_func([$install_class, 'install'], $version);
+            }
         } finally {
             Util::resumeFileMonitor();
-        }
-
-        // 执行安装
-        $version = $this->getPluginVersion($plugin_name);
-        $install_class = "\\plugin\\$plugin_name\\api\\Install";
-        if (class_exists($install_class) && method_exists($install_class, 'install')) {
-            call_user_func([$install_class, 'install'], $version);
-        }
-
-        // 安装 composer 依赖包
-        $packages = $this->getPluginPackages($plugin_name);
-        if (!empty($packages)) {
-            $this->syncComposerPackages($packages, true);
         }
 
         Util::reloadWebman();
@@ -955,9 +962,10 @@ class PluginController extends Base
      * @param array $packages 包列表 [package => version]
      * @param bool $isInstall true=安装, false=移除
      * @param string $excludePlugin 移除时要排除的插件名
+     * @param bool $isUpdate 是否为更新场景
      * @return array 结果 ['success' => bool, 'message' => string]
      */
-    protected function syncComposerPackages(array $packages, bool $isInstall, string $excludePlugin = ''): array
+    protected function syncComposerPackages(array $packages, bool $isInstall, string $excludePlugin = '', bool $isUpdate = false): array
     {
         if (empty($packages)) {
             return ['success' => true, 'message' => '无需处理依赖包'];
@@ -1021,7 +1029,7 @@ class PluginController extends Base
             $installer->setDryRun(false);
             $installer->setDownloadOnly(false);
             $installer->setUpdate(true);
-            $installer->setPreferDist(true);
+            $installer->setPreferDist();
 
             if ($isInstall) {
                 // 安装时只更新指定包
@@ -1041,6 +1049,8 @@ class PluginController extends Base
                 ];
             }
 
+            $this->triggerPluginCallback(array_keys($to_process), $isInstall ? ($isUpdate ? 'update' : 'install') : 'uninstall');
+
             return [
                 'success' => true,
                 'message' => ($isInstall ? '成功安装' : '成功移除') . '依赖包: ' . implode(', ', $isInstall ? array_keys($to_process) : $to_process)
@@ -1050,6 +1060,60 @@ class PluginController extends Base
                 'success' => false,
                 'message' => ($isInstall ? '安装' : '移除') . '依赖包异常: ' . $e->getMessage()
             ];
+        }
+    }
+
+    /**
+     * 触发插件的 Install 回调（install/update/uninstall）
+     * 读取已安装包的 composer.json 获取 PSR-4 命名空间，
+     * 手动调用对应插件的 Install 方法
+     * @param array $packages 包名列表
+     * @param string $action 动作：install / update / uninstall
+     */
+    protected function triggerPluginCallback(array $packages, string $action): void
+    {
+        foreach ($packages as $package) {
+            try {
+                $installedJson = base_path() . '/vendor/' . $package . '/composer.json';
+                if (!is_file($installedJson)) {
+                    continue;
+                }
+                $config = json_decode(file_get_contents($installedJson), true);
+                if (!$config) {
+                    continue;
+                }
+                $psr4 = $config['autoload']['psr-4'] ?? [];
+                foreach ($psr4 as $namespace => $path) {
+                    $pluginConst = "\\{$namespace}Install::WEBMAN_PLUGIN";
+                    if (!defined($pluginConst)) {
+                        continue;
+                    }
+                    $installClass = "\\{$namespace}Install";
+
+                    if ($action === 'uninstall') {
+                        $function = "$installClass::uninstall";
+                        if (is_callable($function)) {
+                            $function('');
+                        }
+                    } elseif ($action === 'update') {
+                        $function = "$installClass::uninstall";
+                        if (is_callable($function)) {
+                            $function('');
+                        }
+                        $function = "$installClass::install";
+                        if (is_callable($function)) {
+                            $function(false);
+                        }
+                    } else {
+                        $function = "$installClass::install";
+                        if (is_callable($function)) {
+                            $function(false);
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                Log::warning("Plugin $action callback failed for $package: " . $e->getMessage());
+            }
         }
     }
 
