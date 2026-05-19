@@ -122,7 +122,6 @@
             toolbar: "#table-bar",
             align  : "center",
             width  : 130,
-            fixed  : "right",
           },
         ];
 

@@ -200,8 +200,7 @@
 						title: "操作",
 						toolbar: "#table-bar",
 						align: "center",
-						fixed: "right",
-                        width: 130,
+						                        width: 130,
 					}
 				];
 				// 渲染表格

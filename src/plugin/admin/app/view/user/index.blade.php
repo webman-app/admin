@@ -353,8 +353,7 @@
 						title: "操作",
 						toolbar: "#table-bar",
 						align: "center",
-						fixed: "right",
-                        width: 130,
+						                        width: 130,
 					}
 				];
 				

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace plugin\admin\app\controller;
 
@@ -89,7 +89,7 @@ class IndexController
             'php_version' => PHP_VERSION,
             'workerman_version' =>  Worker::VERSION,
             'webman_version' => Util::getPackageVersion('workerman/webman-framework'),
-            'admin_version' => Util::getPackageVersion('webman/admin'),
+            'admin_version' => Util::getPackageVersion('webman-app/admin'),
             'mysql_version' => $mysql_version,
             'os' => PHP_OS,
             'day7_detail' => array_reverse($day7_detail),

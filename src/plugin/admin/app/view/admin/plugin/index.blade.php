@@ -116,7 +116,7 @@
             { field: "author", title: "作者", width: 120 },
             { field: "price", title: "价格", width: 80 },
             { field: "version", title: "版本", width: 90 },
-            { title: "操作", toolbar: "#table-bar", align: "center", width: 320, fixed: "right" },
+            { title: "操作", toolbar: "#table-bar", align: "center", width: 320 },
         ];
 
         table.render({

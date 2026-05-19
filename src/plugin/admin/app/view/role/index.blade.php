@@ -106,8 +106,7 @@
                         title: "操作",
                         toolbar: "#table-bar",
                         align: "center",
-                        fixed: "right",
-                        width: 120,
+                                                width: 120,
                     }
                 ];
 

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace plugin\admin\app\controller;
 
