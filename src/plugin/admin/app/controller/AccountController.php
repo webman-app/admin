@@ -212,7 +212,7 @@ class AccountController extends Crud
     {
         $limit_log_path = runtime_path() . '/login';
         if (!is_dir($limit_log_path)) {
-            mkdir($limit_log_path, 0777, true);
+            mkdir($limit_log_path, 0755, true);
         }
         $limit_file = $limit_log_path . '/' . md5($username) . '.limit';
         $time = date('YmdH') . ceil(date('i')/5);

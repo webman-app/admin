@@ -27,7 +27,30 @@ class Install
      */
     public static function uninstall()
     {
+        // 备份需要保留的配置文件
+        $configPath = base_path() . '/plugin/admin/config';
+        $preserveFiles = ['database.php', 'thinkorm.php'];
+        $preserved = [];
+
+        foreach ($preserveFiles as $file) {
+            $filePath = $configPath . '/' . $file;
+            if (is_file($filePath)) {
+                $preserved[$file] = file_get_contents($filePath);
+            }
+        }
+
         self::uninstallByRelation();
+
+        // 恢复保留的配置文件
+        if (!empty($preserved)) {
+            if (!is_dir($configPath)) {
+                mkdir($configPath, 0755, true);
+            }
+            foreach ($preserved as $file => $content) {
+                file_put_contents($configPath . '/' . $file, $content);
+                echo "Preserve config/$file\n";
+            }
+        }
     }
 
     /**
@@ -40,7 +63,7 @@ class Install
             if ($pos = strrpos($dest, '/')) {
                 $parent_dir = base_path().'/'.substr($dest, 0, $pos);
                 if (!is_dir($parent_dir)) {
-                    mkdir($parent_dir, 0777, true);
+                    mkdir($parent_dir, 0755, true);
                 }
             }
             //symlink(__DIR__ . "/$source", base_path()."/$dest");

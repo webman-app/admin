@@ -224,7 +224,7 @@ class UploadController extends Crud
                 $relative_path = 'upload/avatar/' . date('Ym');
                 $real_path = base_path() . "/plugin/admin/public/$relative_path";
                 if (!is_dir($real_path)) {
-                    mkdir($real_path, 0777, true);
+                    mkdir($real_path, 0755, true);
                 }
                 $name = bin2hex(pack('Nn', time(), random_int(1, 65535)));
                 $ext = $file->getUploadExtension();
@@ -316,7 +316,7 @@ class UploadController extends Crud
         $base_dir = $admin_public_path ? $admin_public_path . DIRECTORY_SEPARATOR : base_path() . '/plugin/admin/public/';
         $full_dir = $base_dir . $relative_dir;
         if (!is_dir($full_dir)) {
-            mkdir($full_dir, 0777, true);
+            mkdir($full_dir, 0755, true);
         }
 
         $ext = $file->getUploadExtension() ?: null;
