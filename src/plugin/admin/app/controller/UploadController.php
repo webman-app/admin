@@ -3,7 +3,9 @@
 namespace plugin\admin\app\controller;
 
 use Exception;
-use Intervention\Image\ImageManagerStatic as Image;
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\Exceptions\ImageException;
 use plugin\admin\app\model\Upload;
 use support\exception\BusinessException;
 use support\Request;
@@ -27,12 +29,18 @@ class UploadController extends Crud
     protected $dataLimit = 'personal';
 
     /**
+     * @var ImageManager
+     */
+    protected ImageManager $imageManager;
+
+    /**
      * 构造函数
      * @return void
      */
     public function __construct()
     {
         $this->model = new Upload;
+        $this->imageManager = new ImageManager(new Driver());
     }
 
     /**
@@ -166,17 +174,17 @@ class UploadController extends Crud
         $data = $this->base($request, '/upload/img/' . date('Ymd'));
         $realpath = $data['realpath'];
         try {
-            $img = Image::make($realpath);
+            $img = $this->imageManager->decodePath($realpath);
             $max_height = 1170;
             $max_width = 1170;
             $width = $img->width();
             $height = $img->height();
-            $ratio = 1;
             if ($height > $max_height || $width > $max_width) {
                 $ratio = $width > $height ? $max_width / $width : $max_height / $height;
+                $img->scale((int) round($width * $ratio), (int) round($height * $ratio));
             }
-            $img->resize($width * $ratio, $height * $ratio)->save($realpath);
-        } catch (Exception $e) {
+            $img->save($realpath);
+        } catch (ImageException $e) {
             unlink($realpath);
             return json([
                 'code' => 500,
@@ -208,41 +216,52 @@ class UploadController extends Crud
             if (!in_array($ext, ['jpg', 'jpeg', 'gif', 'png'])) {
                 return json(['code' => 2, 'msg' => '仅支持 jpg jpeg gif png格式']);
             }
-            $image = Image::make($file);
-            $width = $image->width();
-            $height = $image->height();
-            $size = min($width, $height);
-            $relative_path = 'upload/avatar/' . date('Ym');
-            $real_path = base_path() . "/plugin/admin/public/$relative_path";
-            if (!is_dir($real_path)) {
-                mkdir($real_path, 0777, true);
+            try {
+                $image = $this->imageManager->decodePath($file->getRealPath());
+                $width = $image->width();
+                $height = $image->height();
+                $size = min($width, $height);
+                $relative_path = 'upload/avatar/' . date('Ym');
+                $real_path = base_path() . "/plugin/admin/public/$relative_path";
+                if (!is_dir($real_path)) {
+                    mkdir($real_path, 0777, true);
+                }
+                $name = bin2hex(pack('Nn', time(), random_int(1, 65535)));
+                $ext = $file->getUploadExtension();
+
+                // 裁剪并保存大图 (300x300)
+                $image->cover(300, 300);
+                $path = base_path() . "/plugin/admin/public/$relative_path/$name.lg.$ext";
+                $image->save($path);
+
+                // 重新读取并缩放为中图 (120x120)
+                $image = $this->imageManager->decodePath($path);
+                $image->scale(120, 120);
+                $path = base_path() . "/plugin/admin/public/$relative_path/$name.md.$ext";
+                $image->save($path);
+
+                // 重新读取并缩放为小图 (60x60)
+                $image = $this->imageManager->decodePath($path);
+                $image->scale(60, 60);
+                $path = base_path() . "/plugin/admin/public/$relative_path/$name.$ext";
+                $image->save($path);
+
+                // 重新读取并缩放为最小图 (30x30)
+                $image = $this->imageManager->decodePath($path);
+                $image->scale(30, 30);
+                $path = base_path() . "/plugin/admin/public/$relative_path/$name.sm.$ext";
+                $image->save($path);
+
+                return json([
+                    'code' => 0,
+                    'msg' => '上传成功',
+                    'data' => [
+                        'url' => "/app/admin/$relative_path/$name.md.$ext"
+                    ]
+                ]);
+            } catch (ImageException $e) {
+                return json(['code' => 500, 'msg' => '处理图片发生错误']);
             }
-            $name = bin2hex(pack('Nn', time(), random_int(1, 65535)));
-            $ext = $file->getUploadExtension();
-
-            $image->crop($size, $size)->resize(300, 300);
-            $path = base_path() . "/plugin/admin/public/$relative_path/$name.lg.$ext";
-            $image->save($path);
-
-            $image->resize(120, 120);
-            $path = base_path() . "/plugin/admin/public/$relative_path/$name.md.$ext";
-            $image->save($path);
-
-            $image->resize(60, 60);
-            $path = base_path() . "/plugin/admin/public/$relative_path/$name.$ext";
-            $image->save($path);
-
-            $image->resize(30, 30);
-            $path = base_path() . "/plugin/admin/public/$relative_path/$name.sm.$ext";
-            $image->save($path);
-
-            return json([
-                'code' => 0,
-                'msg' => '上传成功',
-                'data' => [
-                    'url' => "/app/admin/$relative_path/$name.md.$ext"
-                ]
-            ]);
         }
         return json(['code' => 1, 'msg' => 'file not found']);
     }

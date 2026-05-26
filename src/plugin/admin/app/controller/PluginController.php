@@ -754,7 +754,6 @@ class PluginController extends Base
         }
     }
 
-
     /**
      * 获取本地插件版本
      * @param $name
@@ -1031,13 +1030,14 @@ class PluginController extends Base
             $installer->setUpdate(true);
             $installer->setPreferDist();
 
-            if ($isInstall) {
-                // 安装时只更新指定包
-                $installer->setUpdateAllowList(array_keys($to_process));
-            } else {
-                // 移除时指定包，并处理传递依赖（自动清理孤儿依赖）
-                $installer->setUpdateAllowList($to_process);
-                $installer->setUpdateAllowTransitiveDependencies(\Composer\DependencyResolver\Request::UPDATE_LISTED_WITH_TRANSITIVE_DEPS_NO_ROOT_REQUIRE);
+            // 有 lock 文件时只更新指定包，无 lock 文件时全量更新
+            if (is_file(base_path() . '/composer.lock')) {
+                if ($isInstall) {
+                    $installer->setUpdateAllowList(array_keys($to_process));
+                } else {
+                    $installer->setUpdateAllowList($to_process);
+                    $installer->setUpdateAllowTransitiveDependencies(\Composer\DependencyResolver\Request::UPDATE_LISTED_WITH_TRANSITIVE_DEPS_NO_ROOT_REQUIRE);
+                }
             }
 
             $result = $installer->run();
