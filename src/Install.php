@@ -13,12 +13,37 @@ class Install
     );
 
     /**
+     * 需要在卸载/安装时保留的配置文件
+     * @var array
+     */
+    protected static $preserveConfigFiles = ['database.php', 'thinkorm.php'];
+
+    /**
      * Install
      * @return void
      */
     public static function install()
     {
+        // 安装前检测是否有备份的配置文件
+        $backupDir = runtime_path() . '/plugin/admin/config';
+        foreach (static::$preserveConfigFiles as $file) {
+            $backupFile = $backupDir . '/' . $file;
+            if (is_file($backupFile)) {
+                echo "Found backup config/$file, will restore after install.\n";
+            }
+        }
+
         static::installByRelation();
+
+        // 安装后恢复备份的配置文件（覆盖新安装的默认配置）
+        foreach (static::$preserveConfigFiles as $file) {
+            $backupFile = $backupDir . '/' . $file;
+            $targetFile = base_path() . '/plugin/admin/config/' . $file;
+            if (is_file($backupFile)) {
+                copy($backupFile, $targetFile);
+                echo "Restore config/$file from backup.\n";
+            }
+        }
     }
 
     /**
@@ -27,30 +52,23 @@ class Install
      */
     public static function uninstall()
     {
-        // 备份需要保留的配置文件
+        // 备份需要保留的配置文件到 runtime 目录
         $configPath = base_path() . '/plugin/admin/config';
-        $preserveFiles = ['database.php', 'thinkorm.php'];
-        $preserved = [];
+        $backupDir = runtime_path() . '/plugin/admin/config';
 
-        foreach ($preserveFiles as $file) {
-            $filePath = $configPath . '/' . $file;
-            if (is_file($filePath)) {
-                $preserved[$file] = file_get_contents($filePath);
+        foreach (static::$preserveConfigFiles as $file) {
+            $sourceFile = $configPath . '/' . $file;
+            $backupFile = $backupDir . '/' . $file;
+            if (is_file($sourceFile)) {
+                if (!is_dir($backupDir)) {
+                    mkdir($backupDir, 0755, true);
+                }
+                copy($sourceFile, $backupFile);
+                echo "Backup config/$file to runtime.\n";
             }
         }
 
         self::uninstallByRelation();
-
-        // 恢复保留的配置文件
-        if (!empty($preserved)) {
-            if (!is_dir($configPath)) {
-                mkdir($configPath, 0755, true);
-            }
-            foreach ($preserved as $file => $content) {
-                file_put_contents($configPath . '/' . $file, $content);
-                echo "Preserve config/$file\n";
-            }
-        }
     }
 
     /**
