@@ -18,8 +18,6 @@
     "webman/console": "^2.2",
     "ext-json": "*",
     "ext-zip": "*",
-    "ext-posix": "*",
-    "ext-pcntl": "*",
     "ext-pdo": "*"
   },
   "autoload": {
