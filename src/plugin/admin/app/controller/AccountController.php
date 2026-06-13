@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace plugin\admin\app\controller;
 
+use DateTimeInterface;
 use Exception;
 use Throwable;
 use plugin\admin\app\common\Auth;
@@ -86,6 +87,7 @@ class AccountController extends Crud
             return $this->json(1, '当前账户暂时无法登录');
         }
         $admin->last_time = date('Y-m-d H:i:s');
+        $admin->last_ip = $request->getRealIp();
         $admin->save();
         $this->removeLoginLimit($username);
         $admin = $admin->toArray();
@@ -166,8 +168,8 @@ class AccountController extends Crud
             'role_name' => $role_name,
             'status' => $user->status,
             'status_text' => $user->status ? '禁用' : '正常',
-            'created_at' => $user->created_at,
-            'updated_at' => $user->updated_at,
+            'created_at' => $this->formatDateTime($user->created_at),
+            'updated_at' => $this->formatDateTime($user->updated_at),
             'isSuperAdmin' => Auth::isSuperAdmin(),
             'token' => $request->sessionId(),
         ];
@@ -255,6 +257,14 @@ class AccountController extends Crud
             }
         }
         return '';
+    }
+
+    protected function formatDateTime(mixed $value): string
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+        return is_scalar($value) ? (string)$value : '';
     }
 
     /**
