@@ -1,8 +1,14 @@
 <?php
+
+declare(strict_types=1);
+
 namespace plugin\admin\api;
 
+use Exception;
 use plugin\admin\app\model\Role;
 use plugin\admin\app\model\Rule;
+use ReflectionClass;
+use ReflectionException;
 use support\exception\BusinessException;
 use function admin;
 
@@ -14,12 +20,12 @@ class Auth
     /**
      * 判断权限
      * 如果没有权限则抛出异常
-     * @param string $controller
-     * @param string $action
+     * @param string|null $controller
+     * @param string|null $action
      * @return void
-     * @throws \ReflectionException|BusinessException
+     * @throws ReflectionException|BusinessException
      */
-    public static function access(string $controller, string $action)
+    public static function access(?string $controller, ?string $action): void
     {
         $code = 0;
         $msg = '';
@@ -30,21 +36,22 @@ class Auth
 
     /**
      * 判断是否有权限
-     * @param string $controller
-     * @param string $action
+     * @param string|null $controller
+     * @param string|null $action
      * @param int $code
      * @param string $msg
      * @return bool
-     * @throws \ReflectionException|BusinessException
+     * @throws ReflectionException|BusinessException|Exception
      */
-    public static function canAccess(string $controller, string $action, int &$code = 0, string &$msg = ''): bool
+    public static function canAccess(?string $controller, ?string $action, int &$code = 0, string &$msg = ''): bool
     {
         // 无控制器信息说明是函数调用，函数不属于任何控制器，鉴权操作应该在函数内部完成。
         if (!$controller) {
             return true;
         }
+        $action = $action ?? '';
         // 获取控制器鉴权信息
-        $class = new \ReflectionClass($controller);
+        $class = new ReflectionClass($controller);
         $properties = $class->getDefaultProperties();
         $noNeedLogin = $properties['noNeedLogin'] ?? [];
         $noNeedAuth = $properties['noNeedAuth'] ?? [];
@@ -69,18 +76,27 @@ class Auth
         }
 
         // 当前管理员无角色
-        $roles = $admin['roles'];
-        if (!$roles) {
+        $role = $admin['role'] ?? null;
+        if (!$role) {
             $msg = '无权限';
             $code = 2;
             return false;
         }
 
         // 角色没有规则
-        $rules = Role::whereIn('id', $roles)->pluck('rules');
+        $role_ids = is_array($role) ? $role : [$role];
+        $role_ids = array_filter($role_ids, static function ($role_id) {
+            return is_scalar($role_id) && $role_id !== '';
+        });
+        if (!$role_ids) {
+            $msg = '无权限';
+            $code = 2;
+            return false;
+        }
+        $rules = Role::whereIn('id', $role_ids)->pluck('rules');
         $rule_ids = [];
         foreach ($rules as $rule_string) {
-            if (!$rule_string) {
+            if (!is_string($rule_string) || $rule_string === '') {
                 continue;
             }
             $rule_ids = array_merge($rule_ids, explode(',', $rule_string));
@@ -92,7 +108,7 @@ class Auth
         }
 
         // 超级管理员
-        if (in_array('*', $rule_ids)){
+        if (in_array('*', $rule_ids)) {
             return true;
         }
 

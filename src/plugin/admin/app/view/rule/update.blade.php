@@ -21,9 +21,23 @@
                 <div class="main-container mr-5">
 
                     <div class="layui-form-item">
+                        <label class="layui-form-label">上级菜单</label>
+                        <div class="layui-input-block">
+                            <div name="pid" id="pid" value="0" ></div>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
                         <label class="layui-form-label required">标题</label>
                         <div class="layui-input-block">
                             <input type="text" name="title" required lay-verify="required" value="" class="layui-input">
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">图标</label>
+                        <div class="layui-input-block">
+                            <input name="icon" id="icon" />
                         </div>
                     </div>
 
@@ -35,9 +49,9 @@
                     </div>
 
                     <div class="layui-form-item">
-                        <label class="layui-form-label">上级菜单</label>
+                        <label class="layui-form-label">url</label>
                         <div class="layui-input-block">
-                            <div name="pid" id="pid" value="0" ></div>
+                            <input type="text" name="href" value="" class="layui-input">
                         </div>
                     </div>
 
@@ -49,23 +63,9 @@
                     </div>
 
                     <div class="layui-form-item">
-                        <label class="layui-form-label">url</label>
-                        <div class="layui-input-block">
-                            <input type="text" name="href" value="" class="layui-input">
-                        </div>
-                    </div>
-
-                    <div class="layui-form-item">
                         <label class="layui-form-label">打开方式</label>
                         <div class="layui-input-block">
                             <div name="open_type" id="open_type" value="_iframe" ></div>
-                        </div>
-                    </div>
-
-                    <div class="layui-form-item">
-                        <label class="layui-form-label">图标</label>
-                        <div class="layui-input-block">
-                            <input name="icon" id="icon" />
                         </div>
                     </div>
 
@@ -142,7 +142,7 @@
                                 dataType: "json",
                                 success: function (res) {
                                     let value = layui.$("#pid").attr("value");
-                                    let initValue = value ? value.split(",") : [];
+                                    let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                                     layui.xmSelect.render({
                                         el: "#pid",
                                         name: "pid",
@@ -165,7 +165,7 @@
                         // 菜单类型下拉选择
                         layui.use(["jquery", "xmSelect"], function() {
                             let value = layui.$("#type").attr("value");
-                            let initValue = value ? value.split(",") : [];
+                            let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                             const toggleOpenType = val => {
                                 if (val !== '1'){
                                     layui.$('.layui-form-item:has(#open_type)').hide();
@@ -198,7 +198,7 @@
                         // 打开方式下拉列表
                         layui.use(["jquery", "xmSelect"], function() {
                             let value = layui.$("#open_type").attr("value") || '_iframe';
-                            let initValue = value ? value.split(",") : [];
+                            let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                             layui.xmSelect.render({
                                 el: "#open_type",
                                 name: "open_type",

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
 use support\Model;
@@ -55,11 +57,23 @@ class Base
         return json(['code' => $code, 'data' => $data, 'msg' => $msg]);
     }
 
+    /**
+     * 返回成功响应
+     * @param string $msg 提示信息
+     * @param array $data 响应数据
+     * @return Response
+     */
     protected function success(string $msg = '成功', array $data = []): Response
     {
         return $this->json(0, $msg, $data);
     }
 
+    /**
+     * 返回失败响应
+     * @param string $msg 提示信息
+     * @param array $data 响应数据
+     * @return Response
+     */
     protected function fail(string $msg = '失败', array $data = []): Response
     {
         return $this->json(1, $msg, $data);

@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 namespace plugin\admin\app\middleware;
 
 use plugin\admin\api\Auth;
@@ -28,7 +31,7 @@ class AccessControl implements MiddlewareInterface
                 $response = json(['code' => $code, 'msg' => $msg, 'data' => []]);
             } else {
                 if ($code === 401) {
-                  $response = admin_error_401_script();
+                    $response = admin_error_401_script();
                 } else {
                     $request->app = '';
                     $request->plugin = 'admin';
@@ -37,11 +40,9 @@ class AccessControl implements MiddlewareInterface
             }
 
         } else {
-            $response = $request->method() == 'OPTIONS' ? response('') : $handler($request);
+            $response = $request->method() === 'OPTIONS' ? response() : $handler($request);
         }
 
         return $response;
-
     }
-
 }

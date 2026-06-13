@@ -697,7 +697,7 @@
                         layui.each($(".key-columns-div"), function (_, dom) {
                             let name = $(dom).attr("name");
                             let value = $(dom).attr("value");
-                            let initValue = value ? value.split(",") : [];
+                            let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                             layui.xmSelect.render({
                                 el: dom,
                                 name: name,

@@ -349,9 +349,11 @@
 				};
 				echartsRecords.setOption(option);
 
-				window.onresize = function() {
+				function resizeChart() {
 					echartsRecords.resize();
 				}
+				window.addEventListener('resize', resizeChart);
+				setTimeout(resizeChart, 300);
 
 			});
 		</script>

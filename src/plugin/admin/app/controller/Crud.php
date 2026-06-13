@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
+use Exception;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use plugin\admin\app\common\Auth;
@@ -24,7 +27,7 @@ class Crud extends Base
      * 查询
      * @param Request $request
      * @return Response
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     public function select(Request $request): Response
     {
@@ -37,7 +40,7 @@ class Crud extends Base
      * 添加
      * @param Request $request
      * @return Response
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     public function insert(Request $request): Response
     {
@@ -50,7 +53,7 @@ class Crud extends Base
      * 更新
      * @param Request $request
      * @return Response
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     public function update(Request $request): Response
     {
@@ -63,7 +66,7 @@ class Crud extends Base
      * 删除
      * @param Request $request
      * @return Response
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     public function delete(Request $request): Response
     {
@@ -76,7 +79,7 @@ class Crud extends Base
      * 查询前置
      * @param Request $request
      * @return array
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     protected function selectInput(Request $request): array
     {
@@ -102,9 +105,22 @@ class Crud extends Base
         foreach ($where as $column => $value) {
             if (
                 $value === '' || !isset($allow_column[$column]) ||
-                is_array($value) && (empty($value) || !in_array($value[0], ['null', 'not null']) && !isset($value[1]))
+                is_array($value) && (!isset($value[0]) || !is_scalar($value[0]) || empty($value) || !in_array($value[0], ['null', 'not null']) && !isset($value[1]))
             ) {
                 unset($where[$column]);
+                continue;
+            }
+            if (is_array($value) && isset($value[1])) {
+                if (is_array($value[1])) {
+                    foreach ($value[1] as $item) {
+                        if (!is_scalar($item) && $item !== null) {
+                            unset($where[$column]);
+                            continue 2;
+                        }
+                    }
+                } elseif (!is_scalar($value[1])) {
+                    unset($where[$column]);
+                }
             }
         }
         // 按照数据限制字段返回数据
@@ -128,7 +144,7 @@ class Crud extends Base
      * @param string $order
      * @return EloquentBuilder|QueryBuilder|Model
      */
-    protected function doSelect(array $where, ?string $field = null, string $order= 'desc')
+    protected function doSelect(array $where, ?string $field = null, string $order = 'desc'): EloquentBuilder|QueryBuilder|Model
     {
         $model = $this->model;
         foreach ($where as $column => $value) {
@@ -149,7 +165,7 @@ class Crud extends Base
                         $valArr = explode(",", trim($value[1]));
                     }
                     $model = $model->whereNotIn($column, $valArr);
-                }elseif ($value[0] == 'null') {
+                } elseif ($value[0] == 'null') {
                     $model = $model->whereNull($column);
                 } elseif ($value[0] == 'not null') {
                     $model = $model->whereNotNull($column);
@@ -195,7 +211,7 @@ class Crud extends Base
      * 插入前置方法
      * @param Request $request
      * @return array
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     protected function insertInput(Request $request): array
     {
@@ -227,9 +243,9 @@ class Crud extends Base
     /**
      * 执行插入
      * @param array $data
-     * @return mixed|null
+     * @return mixed
      */
-    protected function doInsert(array $data)
+    protected function doInsert(array $data): mixed
     {
         $primary_key = $this->model->getKeyName();
         $model_class = get_class($this->model);
@@ -245,12 +261,15 @@ class Crud extends Base
      * 更新前置方法
      * @param Request $request
      * @return array
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     protected function updateInput(Request $request): array
     {
         $primary_key = $this->model->getKeyName();
         $id = $request->post($primary_key);
+        if (!is_scalar($id) && $id !== null) {
+            throw new BusinessException('主键参数错误', 2);
+        }
         $data = $this->inputFilter($request->post());
         $model = $this->model->find($id);
         if (!$model) {
@@ -294,7 +313,7 @@ class Crud extends Base
      * @param $data
      * @return void
      */
-    protected function doUpdate($id, $data)
+    protected function doUpdate($id, $data): void
     {
         $model = $this->model->find($id);
         foreach ($data as $key => $val) {
@@ -323,10 +342,15 @@ class Crud extends Base
                 continue;
             }
             // 非字符串类型传空则为null
-            if ($item === '' && strpos(strtolower($columns[$col]), 'varchar') === false && strpos(strtolower($columns[$col]), 'text') === false) {
+            if ($item === '' && !str_contains(strtolower($columns[$col]), 'varchar') && !str_contains(strtolower($columns[$col]), 'text')) {
                 $data[$col] = null;
             }
             if (is_array($item)) {
+                foreach ($item as $value) {
+                    if (!is_scalar($value) && $value !== null) {
+                        throw new BusinessException('参数错误');
+                    }
+                }
                 $data[$col] = implode(',', $item);
             }
         }
@@ -343,7 +367,7 @@ class Crud extends Base
      * 删除前置方法
      * @param Request $request
      * @return array
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     protected function deleteInput(Request $request): array
     {
@@ -352,7 +376,12 @@ class Crud extends Base
             throw new BusinessException('该表无主键，不支持删除');
         }
         $ids = (array)$request->post($primary_key, []);
-        if (!Auth::isSuperAdmin()){
+        foreach ($ids as $id) {
+            if (!is_scalar($id) && $id !== null) {
+                throw new BusinessException('主键参数错误');
+            }
+        }
+        if (!Auth::isSuperAdmin()) {
             $admin_ids = [];
             if ($this->dataLimit) {
                 $admin_ids = $this->model->where($primary_key, $ids)->pluck($this->dataLimitField)->toArray();
@@ -375,7 +404,7 @@ class Crud extends Base
      * @param array $ids
      * @return void
      */
-    protected function doDelete(array $ids)
+    protected function doDelete(array $ids): void
     {
         if (!$ids) {
             return;
@@ -433,7 +462,7 @@ class Crud extends Base
                 'value' => $item->$primary_key
             ];
         }
-        return  $this->json(0, 'ok', $formatted_items);
+        return $this->json(0, 'ok', $formatted_items);
     }
 
     /**
@@ -452,17 +481,17 @@ class Crud extends Base
      * @param mixed $items 原数据
      * @return mixed 修改后数据
      */
-    protected function afterQuery($items)
+    protected function afterQuery(mixed $items): mixed
     {
         return $items;
     }
 
     /**
      * 猜测记录名称
-     * @param $item
+     * @param mixed $item
      * @return mixed
      */
-    protected function guessName($item)
+    protected function guessName(mixed $item): mixed
     {
         return $item->title ?? $item->name ?? $item->nickname ?? $item->username ?? $item->id;
     }

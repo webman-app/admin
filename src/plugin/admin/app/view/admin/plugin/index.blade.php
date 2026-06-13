@@ -85,7 +85,7 @@
 
 <script src="/app/admin/component/layui/layui.js?v=2.8.12"></script>
 <script src="/app/admin/component/pear/pear.js"></script>
-<script src="/app/admin/admin/js/common.js"></script>
+<script src="/app/admin/js/common.js"></script>
 <script>
     const LIST_API = "/app/admin/plugin/list";
     const INSTALL_API = "/app/admin/plugin/install";
@@ -178,6 +178,7 @@
                         if (res.code === -1) {
                             layer.open({
                                 type: 2, title: "登录", shade: 0.1,
+                                maxmin: true,
                                 area: ["400px", "300px"],
                                 content: LOGIN_URL
                             });
@@ -208,6 +209,7 @@
                         if (res.code === -1) {
                             layer.open({
                                 type: 2, title: "登录", shade: 0.1,
+                                maxmin: true,
                                 area: ["400px", "300px"],
                                 content: LOGIN_URL
                             });

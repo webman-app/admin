@@ -235,6 +235,7 @@
                         type: 2,
                         title: "新增",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile()?"100%":"750px", common.isModile()?"100%":"625px"],
                         content: INSERT_URL
                     });
@@ -247,6 +248,7 @@
                         type: 2,
                         title: "修改",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile()?"100%":"750px", common.isModile()?"100%":"625px"],
                         content: UPDATE_URL + "?" + PRIMARY_KEY + "=" + value
                     });

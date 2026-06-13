@@ -87,12 +87,14 @@
                         
                         // 字段 权限 rules
                         layui.use(["jquery", "xmSelect", "popup"], function() {
+                            let pid = res.data[0].pid;
+                            let url = "/app/admin/role/rules?id=" + (pid || 1);
                             layui.$.ajax({
-                                url: "/app/admin/role/rules?id=" + res.data[0].pid,
+                                url: url,
                                 dataType: "json",
                                 success: function (res) {
                                     let value = layui.$("#rules").attr("value");
-                                    let initValue = value ? value.split(",") : [];
+                                    let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                                     layui.xmSelect.render({
                                         el: "#rules",
                                         name: "rules",
@@ -117,15 +119,14 @@
                                 dataType: "json",
                                 success: function (res) {
                                     let value = layui.$("#pid").attr("value");
-                                    let initValue = value ? value.split(",") : [];
+                                    let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                                     layui.xmSelect.render({
                                         el: "#pid",
                                         name: "pid",
                                         initValue: initValue,
-                                        tips: "请选择",
+                                        tips: "不选择则为一级角色",
                                         toolbar: {show: true, list: ["CLEAR"]},
                                         data: res.data,
-                                        value: "0",
                                         model: {"icon":"hidden","label":{"type":"text"}},
                                         clickClose: true,
                                         radio: true,

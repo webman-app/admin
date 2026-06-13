@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
 use plugin\admin\app\model\Dict;
@@ -63,11 +65,11 @@ class DictController extends Base
     {
         if ($request->method() === 'POST') {
             $name = $request->post('name');
+            if (!is_string($name) || !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+                return $this->json(2, '字典名称只能是字母数字下划线的组合');
+            }
             if (Dict::get($name)) {
                 return $this->json(1, '字典已经存在');
-            }
-            if (!preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
-                return $this->json(2, '字典名称只能是字母数字下划线的组合');
             }
             $values = (array)$request->post('value', []);
             Dict::save($name, $values);
@@ -85,11 +87,11 @@ class DictController extends Base
     {
         if ($request->method() === 'POST') {
             $name = $request->post('name');
+            if (!is_string($name) || !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+                return $this->json(2, '字典名称只能是字母数字下划线的组合');
+            }
             if (!Dict::get($name)) {
                 return $this->json(1, '字典不存在');
-            }
-            if (!preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
-                return $this->json(2, '字典名称只能是字母数字下划线的组合');
             }
             Dict::save($name, $request->post('value'));
         }
@@ -104,6 +106,7 @@ class DictController extends Base
     public function delete(Request $request): Response
     {
         $names = (array)$request->post('name');
+        $names = array_filter($names, 'is_string');
         Dict::delete($names);
         return $this->json(0);
     }
@@ -111,10 +114,10 @@ class DictController extends Base
     /**
      * 获取
      * @param Request $request
-     * @param $name
+     * @param string $name
      * @return Response
      */
-    public function get(Request $request, $name): Response
+    public function get(Request $request, string $name): Response
     {
         return $this->json(0, 'ok', (array)Dict::get($name));
     }

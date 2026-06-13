@@ -29,7 +29,7 @@
 
         <!-- 表格行工具栏 -->
         <script type="text/html" id="table-bar">
-            @{{# if(d.id!==1&&d.pid&&!d.isRoot){ }}
+            @{{# if(d.rules!=='*'){ }}
             <button class="layui-btn layui-btn-xs tool-btn" lay-event="edit" permission="app.admin.role.update">编辑</button>
             <button class="layui-btn layui-btn-xs tool-btn" lay-event="remove" permission="app.admin.role.delete">删除</button>
             @{{# } }}
@@ -64,12 +64,25 @@
                     {
                         type: "checkbox"
                     }, {
-                        title: "角色组",
-                        field: "name",
-                    }, {
                         title: "主键",
                         field: "id",
                         hide: true,
+                    }, {
+                        title: "父级",
+                        field: "pid",
+                        templet: function (d) {
+                            let field = "pid";
+                            if (typeof d[field] == "undefined") return "";
+                            let items = [];
+                            layui.each((d[field] + "").split(","), function (k, v) {
+                                items.push(apiResults[field][v] || v);
+                            });
+                            return util.escape(items.join(","));
+                        },
+                        hide: true,
+                    }, {
+                        title: "角色组",
+                        field: "name",
                     }, {
                         title: "权限",
                         field: "rules",
@@ -89,19 +102,6 @@
                     }, {
                         title: "更新时间",
                         field: "updated_at",
-                    }, {
-                        title: "父级",
-                        field: "pid",
-                        templet: function (d) {
-                            let field = "pid";
-                            if (typeof d[field] == "undefined") return "";
-                            let items = [];
-                            layui.each((d[field] + "").split(","), function (k, v) {
-                                items.push(apiResults[field][v] || v);
-                            });
-                            return util.escape(items.join(","));
-                        },
-                        hide: true,
                     }, {
                         title: "操作",
                         toolbar: "#table-bar",
@@ -243,6 +243,7 @@
                         type: 2,
                         title: "新增",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile() ? "100%" : "750px", common.isModile() ? "100%" : "625px"],
                         content: INSERT_URL
                     });
@@ -255,6 +256,7 @@
                         type: 2,
                         title: "修改",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile() ? "100%" : "750px", common.isModile() ? "100%" : "625px"],
                         content: UPDATE_URL + "?" + PRIMARY_KEY + "=" + value
                     });

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
 use Composer\Factory;
@@ -12,7 +14,6 @@ use plugin\admin\app\common\Util;
 use app\process\Monitor;
 use support\exception\BusinessException;
 use support\Log;
-use support\Plugin;
 use support\Request;
 use support\Response;
 use Throwable;
@@ -59,8 +60,8 @@ class PluginController extends Base
         $all_items = null;
         if (is_file($cache_file) && (time() - filemtime($cache_file)) < $cache_ttl) {
             $cached = json_decode(file_get_contents($cache_file), true);
-            if ($cached && isset($cached['items'])) {
-                $all_items = $cached['items'];
+            if (is_array($cached) && isset($cached['items']) && is_array($cached['items'])) {
+                $all_items = array_values(array_filter($cached['items'], 'is_array'));
             }
         }
 
@@ -84,11 +85,15 @@ class PluginController extends Base
         }
 
         // 搜索过滤
-        $keyword = trim($request->get('name', ''));
+        $keyword = $request->get('name', '');
+        $keyword = is_string($keyword) ? trim($keyword) : '';
         if ($keyword !== '') {
             $all_items = array_filter($all_items, function ($item) use ($keyword) {
-                $name = $item['name'] ?? '';
-                $title = $item['title'] ?? '';
+                if (!is_array($item)) {
+                    return false;
+                }
+                $name = is_string($item['name'] ?? null) ? $item['name'] : '';
+                $title = is_string($item['title'] ?? null) ? $item['title'] : '';
                 return stripos($name, $keyword) !== false
                     || stripos($title, $keyword) !== false;
             });
@@ -126,15 +131,15 @@ class PluginController extends Base
         ]);
         $content = $response->getBody()->getContents();
         $data = json_decode($content, true);
-        if (!$data || !isset($data['data']['items'])) {
+        if (!is_array($data) || !isset($data['data']['items'])) {
             return [];
         }
-        $items = $data['data']['items'];
+        $items = is_array($data['data']['items']) ? $data['data']['items'] : [];
         // 关联数组转索引数组
         if (!empty($items) && !isset($items[0])) {
             $items = array_values($items);
         }
-        return $items;
+        return array_values(array_filter($items, 'is_array'));
     }
 
     /**
@@ -150,7 +155,10 @@ class PluginController extends Base
         // 远程插件建立索引，避免 O(n²) 查找
         $remote_map = [];
         foreach ($remote_items as $remote) {
-            $name = $remote['name'] ?? '';
+            if (!is_array($remote)) {
+                continue;
+            }
+            $name = is_string($remote['name'] ?? null) ? $remote['name'] : '';
             if ($name) {
                 $remote_map[$name] = $remote;
             }
@@ -193,7 +201,10 @@ class PluginController extends Base
 
         // 追加远程有但本地没有的插件
         foreach ($remote_items as $item) {
-            $name = $item['name'] ?? '';
+            if (!is_array($item)) {
+                continue;
+            }
+            $name = is_string($item['name'] ?? null) ? $item['name'] : '';
             if ($name && !isset($local_plugins[$name])) {
                 $item['title'] = $item['title'] ?? $name;
                 $item['installed'] = 0;
@@ -227,10 +238,13 @@ class PluginController extends Base
     {
         $name = $request->post('name');
         $version = $request->post('version');
-        $installed_version = $this->getPluginVersion($name);
-        if (!$name || !$version) {
+        if (!is_string($name) || !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+            return $this->json(1, '参数错误');
+        }
+        if (!is_string($version) || $version === '') {
             return $this->json(1, '缺少参数');
         }
+        $installed_version = $this->getPluginVersion($name);
 
         $user = session('app-plugin-user');
         if (!$user) {
@@ -240,14 +254,19 @@ class PluginController extends Base
         // 获取下载zip文件url
         $data = $this->getDownloadUrl($name, $version);
         if ($data['code'] != 0) {
-            return $this->json($data['code'], $data['msg'], $data['data'] ?? []);
+            $msg = is_string($data['msg'] ?? null) ? $data['msg'] : '官方接口返回错误';
+            return $this->json((int)$data['code'], $msg, is_array($data['data'] ?? null) ? $data['data'] : []);
+        }
+        $download_url = $data['data']['url'] ?? null;
+        if (!is_string($download_url) || $download_url === '') {
+            throw new BusinessException('官方接口返回数据错误');
         }
 
         // 下载zip文件
         $base_path = base_path() . "/plugin/$name";
         $zip_file = "$base_path.zip";
         $extract_to = base_path() . '/plugin/';
-        $this->downloadZipFile($data['data']['url'], $zip_file);
+        $this->downloadZipFile($download_url, $zip_file);
 
         $has_zip_archive = class_exists(ZipArchive::class, false);
         if (!$has_zip_archive) {
@@ -325,8 +344,11 @@ class PluginController extends Base
     {
         $name = $request->post('name');
         $version = $request->post('version');
-        if (!$name || !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+        if (!is_string($name) || !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
             return $this->json(1, '参数错误');
+        }
+        if (!is_string($version)) {
+            $version = '';
         }
 
         // 获得插件路径
@@ -384,7 +406,7 @@ class PluginController extends Base
     public function pay(Request $request): Response|string
     {
         $app = $request->get('app');
-        if (!$app) {
+        if (!is_string($app) || !preg_match('/^[a-zA-Z0-9_]+$/', $app)) {
             return response('app not found');
         }
         $token = session('app-plugin-token');
@@ -428,24 +450,35 @@ class PluginController extends Base
             return (string)$response->getBody();
         }
 
+        $username = $request->post('username');
+        $password = $request->post('password');
+        $captcha = $request->post('captcha');
+        if (!is_string($username) || !is_string($password) || !is_string($captcha)) {
+            return $this->json(1, '登录参数错误');
+        }
         $response = $client->post('/api/user/login', [
             'form_params' => [
-                'email' => $request->post('username'),
-                'password' => $request->post('password'),
-                'captcha' => $request->post('captcha')
+                'email' => $username,
+                'password' => $password,
+                'captcha' => $captcha
             ]
         ]);
         $content = $response->getBody()->getContents();
         $data = json_decode($content, true);
-        if (!$data) {
+        if (!is_array($data) || !array_key_exists('code', $data)) {
             Log::error("/api/user/login return $content");
             return $this->json(1, '发生错误');
         }
         if ($data['code'] != 0) {
-            return $this->json($data['code'], $data['msg']);
+            $msg = is_string($data['msg'] ?? null) ? $data['msg'] : '发生错误';
+            return $this->json((int)$data['code'], $msg);
+        }
+        $uid = $data['data']['uid'] ?? null;
+        if (!is_scalar($uid)) {
+            return $this->json(1, '发生错误');
         }
         session()->set('app-plugin-user', [
-            'uid' => $data['data']['uid']
+            'uid' => $uid
         ]);
         return $this->json(0);
     }
@@ -454,23 +487,24 @@ class PluginController extends Base
      * 获取zip下载url
      * @param $name
      * @param $version
-     * @return mixed
+     * @return array
      * @throws BusinessException|GuzzleException|Exception
      */
-    protected function getDownloadUrl($name, $version): mixed
+    protected function getDownloadUrl($name, $version): array
     {
         $client = $this->httpClient();
         $response = $client->get("/app/download/$name?version=$version");
 
         $content = $response->getBody()->getContents();
         $data = json_decode($content, true);
-        if (!$data) {
+        if (!is_array($data) || !array_key_exists('code', $data)) {
             $msg = "/api/app/download return $content";
             Log::error($msg);
             throw new BusinessException('访问官方接口失败 ' . $response->getStatusCode() . ' ' . $response->getReasonPhrase());
         }
         if ($data['code'] && $data['code'] != -1 && $data['code'] != -2) {
-            throw new BusinessException($data['msg']);
+            $msg = is_string($data['msg'] ?? null) ? $data['msg'] : '官方接口返回错误';
+            throw new BusinessException($msg);
         }
         if ($data['code'] == 0 && !isset($data['data']['url'])) {
             throw new BusinessException('官方接口返回数据错误');
@@ -552,7 +586,11 @@ class PluginController extends Base
     {
         clearstatcache();
         $installed = [];
-        $plugin_names = array_diff(scandir(base_path() . '/plugin/'), array('.', '..')) ?: [];
+        $plugin_names = scandir(base_path() . '/plugin/');
+        if (!is_array($plugin_names)) {
+            return [];
+        }
+        $plugin_names = array_diff($plugin_names, array('.', '..')) ?: [];
         foreach ($plugin_names as $plugin_name) {
             if (is_dir(base_path() . "/plugin/$plugin_name")) {
                 $info = $this->getPluginInfo($plugin_name);
@@ -576,10 +614,16 @@ class PluginController extends Base
             return ['version' => null, 'title' => $name, 'url' => ''];
         }
         $config = include $config_file;
+        if (!is_array($config)) {
+            return ['version' => null, 'title' => $name, 'url' => ''];
+        }
+        $version = $config['version'] ?? null;
+        $title = $config['title'] ?? $name;
+        $url = $config['url'] ?? '';
         return [
-            'version' => $config['version'] ?? null,
-            'title' => $config['title'] ?? $name,
-            'url' => $config['url'] ?? '',
+            'version' => is_scalar($version) ? (string)$version : null,
+            'title' => is_scalar($title) ? (string)$title : $name,
+            'url' => is_scalar($url) ? (string)$url : '',
         ];
     }
 
@@ -601,7 +645,7 @@ class PluginController extends Base
     public function export(Request $request): Response
     {
         $name = $request->get('name');
-        if (!$name || !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+        if (!is_string($name) || !preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
             return $this->json(1, '参数错误');
         }
 
@@ -742,6 +786,9 @@ class PluginController extends Base
     protected function addDirToZip(ZipArchive $zip, string $folder, string $parent_folder): void
     {
         $files = scandir($folder);
+        if (!is_array($files)) {
+            return;
+        }
         foreach ($files as $file) {
             if ($file === '.' || $file === '..') continue;
             $full_path = $folder . DIRECTORY_SEPARATOR . $file;
@@ -901,6 +948,9 @@ class PluginController extends Base
             return [];
         }
         $config = include $config_file;
+        if (!is_array($config)) {
+            return [];
+        }
         $packages = $config['packages'] ?? [];
         if (!is_array($packages)) {
             return [];
@@ -917,7 +967,10 @@ class PluginController extends Base
                 $package = $key;
                 $version = $value ?: '*';
             }
-            $normalized[$package] = $version;
+            if (!is_scalar($package) || !is_scalar($version)) {
+                continue;
+            }
+            $normalized[(string)$package] = (string)$version;
         }
         return $normalized;
     }
@@ -930,14 +983,18 @@ class PluginController extends Base
     protected function getAllPluginsPackages(string $excludePlugin = ''): array
     {
         $packages = [];
-        $plugin_names = array_diff(scandir(base_path() . '/plugin/'), array('.', '..')) ?: [];
+        $plugin_names = scandir(base_path() . '/plugin/');
+        if (!is_array($plugin_names)) {
+            return [];
+        }
+        $plugin_names = array_diff($plugin_names, array('.', '..')) ?: [];
         foreach ($plugin_names as $plugin_name) {
             if ($plugin_name === $excludePlugin) {
                 continue;
             }
             if (is_dir(base_path() . "/plugin/$plugin_name")) {
-                $packages = $this->getPluginPackages($plugin_name);
-                foreach ($packages as $package => $version) {
+                $plugin_packages = $this->getPluginPackages($plugin_name);
+                foreach ($plugin_packages as $package => $version) {
                     $packages[$package] = true;
                 }
             }
@@ -1001,7 +1058,7 @@ class PluginController extends Base
             // 更新 composer.json
             $composerJsonPath = base_path() . '/composer.json';
             $composerConfig = json_decode(file_get_contents($composerJsonPath), true);
-            if (!$composerConfig || !isset($composerConfig['require'])) {
+            if (!is_array($composerConfig) || !isset($composerConfig['require']) || !is_array($composerConfig['require'])) {
                 return ['success' => false, 'message' => '无法读取 composer.json'];
             }
 
@@ -1079,10 +1136,13 @@ class PluginController extends Base
                     continue;
                 }
                 $config = json_decode(file_get_contents($installedJson), true);
-                if (!$config) {
+                if (!is_array($config)) {
                     continue;
                 }
                 $psr4 = $config['autoload']['psr-4'] ?? [];
+                if (!is_array($psr4)) {
+                    continue;
+                }
                 foreach ($psr4 as $namespace => $path) {
                     $pluginConst = "\\{$namespace}Install::WEBMAN_PLUGIN";
                     if (!defined($pluginConst)) {

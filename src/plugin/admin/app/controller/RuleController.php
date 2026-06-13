@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
 use Exception;
@@ -7,6 +9,8 @@ use plugin\admin\app\common\Tree;
 use plugin\admin\app\common\Util;
 use plugin\admin\app\model\Role;
 use plugin\admin\app\model\Rule;
+use ReflectionClass;
+use ReflectionMethod;
 use support\exception\BusinessException;
 use support\Request;
 use support\Response;
@@ -51,7 +55,7 @@ class RuleController extends Crud
      * 查询
      * @param Request $request
      * @return Response
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     public function select(Request $request): Response
     {
@@ -67,7 +71,7 @@ class RuleController extends Crud
      */
     function get(Request $request): Response
     {
-        $rules = $this->getRules(admin('roles'));
+        $rules = $this->getRules(admin('role'));
         $types = $request->get('type', '0,1');
         $types = is_string($types) ? explode(',', $types) : [0, 1];
         $items = Rule::orderBy('weight', 'desc')->get()->toArray();
@@ -91,7 +95,7 @@ class RuleController extends Crud
         }
         $this->removeNotContain($tree_items, 'type', $types);
         $menus = $this->empty_filter(Tree::arrayValues($tree_items));
-        if ($request->get('original') || $request->get('fresh')){
+        if ($request->get('original') || $request->get('fresh')) {
             return json($menus);
         }
         return $this->json(0, 'ok', $menus);
@@ -123,7 +127,7 @@ class RuleController extends Crud
      */
     public function permission(Request $request): Response
     {
-        $rules = $this->getRules(admin('roles'));
+        $rules = $this->getRules(admin('role'));
         // 超级管理员
         if (in_array('*', $rules)) {
             return $this->json(0, 'ok', ['*']);
@@ -144,7 +148,7 @@ class RuleController extends Crud
      * 根据类同步规则到数据库
      * @return void
      */
-    protected function syncRules()
+    protected function syncRules(): void
     {
         $items = $this->model->where('key', 'like', '%\\\\%')->get()->keyBy('key');
         $methods_in_db = [];
@@ -156,15 +160,15 @@ class RuleController extends Crud
                 continue;
             }
             if (class_exists($class)) {
-                $reflection = new \ReflectionClass($class);
+                $reflection = new ReflectionClass($class);
                 $properties = $reflection->getDefaultProperties();
                 $no_need_auth = array_merge($properties['noNeedLogin'] ?? [], $properties['noNeedAuth'] ?? []);
                 $class = $reflection->getName();
                 $pid = $item->id;
-                $methods = $reflection->getMethods(\ReflectionMethod::IS_PUBLIC);
+                $methods = $reflection->getMethods(ReflectionMethod::IS_PUBLIC);
                 foreach ($methods as $method) {
                     $method_name = $method->getName();
-                    if (strtolower($method_name) === 'index' || strpos($method_name, '__') === 0 || in_array($method_name, $no_need_auth)) {
+                    if (strtolower($method_name) === 'index' || str_starts_with($method_name, '__') || in_array($method_name, $no_need_auth)) {
                         continue;
                     }
                     $name = "$class@$method_name";
@@ -198,7 +202,7 @@ class RuleController extends Crud
      * 查询前置方法
      * @param Request $request
      * @return array
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     protected function selectInput(Request $request): array
     {
@@ -228,15 +232,18 @@ class RuleController extends Crud
             return view('rule/insert');
         }
         $data = $this->insertInput($request);
+        if (empty($data['key']) || !is_string($data['key'])) {
+            return $this->json(1, '菜单标识参数错误');
+        }
         if (empty($data['type'])) {
             $data['type'] = strpos($data['key'], '\\') ? 1 : 0;
         }
         $data['key'] = str_replace('\\\\', '\\', $data['key']);
-        $key = $data['key'] ?? '';
+        $key = $data['key'];
         if ($this->model->where('key', $key)->first()) {
             return $this->json(1, "菜单标识 $key 已经存在");
         }
-        $data['pid'] = empty($data['pid']) ? 0 : $data['pid'];
+        $data['pid'] = empty($data['pid']) ? null : $data['pid'];
         $this->doInsert($data);
         return $this->json(0);
     }
@@ -257,10 +264,13 @@ class RuleController extends Crud
             return $this->json(2, '记录不存在');
         }
         if (isset($data['pid'])) {
-            $data['pid'] = $data['pid'] ?: 0;
+            $data['pid'] = $data['pid'] ?: null;
             if ($data['pid'] == $row['id']) {
                 return $this->json(2, '不能将自己设置为上级菜单');
             }
+        }
+        if (isset($data['key']) && !is_string($data['key'])) {
+            return $this->json(1, '菜单标识参数错误');
         }
         if (isset($data['key'])) {
             $data['key'] = str_replace('\\\\', '\\', $data['key']);
@@ -268,11 +278,12 @@ class RuleController extends Crud
         $this->doUpdate($id, $data);
         return $this->json(0);
     }
-    
+
     /**
      * 删除
      * @param Request $request
      * @return Response
+     * @throws Exception
      */
     public function delete(Request $request): Response
     {
@@ -294,7 +305,7 @@ class RuleController extends Crud
      * @param $values
      * @return void
      */
-    protected function removeNotContain(&$array, $key, $values)
+    protected function removeNotContain(&$array, $key, $values): void
     {
         foreach ($array as $k => &$item) {
             if (!is_array($item)) {
@@ -318,7 +329,7 @@ class RuleController extends Crud
      * @param $values
      * @return bool
      */
-    protected function arrayContain(&$array, $key, $values): bool
+    protected function arrayContain($array, $key, $values): bool
     {
         if (!is_array($array)) {
             return false;
@@ -344,10 +355,14 @@ class RuleController extends Crud
      */
     protected function getRules($roles): array
     {
-        $rules_strings = $roles ? Role::whereIn('id', $roles)->pluck('rules') : [];
+        $role_ids = is_array($roles) ? $roles : [$roles];
+        $role_ids = array_filter($role_ids, static function ($role_id) {
+            return is_scalar($role_id) && $role_id !== '';
+        });
+        $rules_strings = $role_ids ? Role::whereIn('id', $role_ids)->pluck('rules') : [];
         $rules = [];
         foreach ($rules_strings as $rule_string) {
-            if (!$rule_string) {
+            if (!is_string($rule_string) || $rule_string === '') {
                 continue;
             }
             $rules = array_merge($rules, explode(',', $rule_string));

@@ -16,7 +16,7 @@
                     <div class="layui-form-item">
                         <label class="layui-form-label">父级</label>
                         <div class="layui-input-block">
-                            <div name="pid" id="pid" value="1" ></div>
+                            <div name="pid" id="pid" value="" ></div>
                         </div>
                     </div>
 
@@ -68,7 +68,7 @@
                     dataType: "json",
                     success: function (res) {
                         let value = layui.$("#rules").attr("value");
-                        let initValue = value ? value.split(",") : [];
+                        let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                         layui.xmSelect.render({
                             el: "#rules",
                             name: "rules",
@@ -90,14 +90,13 @@
                     dataType: "json",
                     success: function (res) {
                         let value = layui.$("#pid").attr("value");
-                        let initValue = value ? value.split(",") : [];
+                        let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                         layui.xmSelect.render({
                             el: "#pid",
                             name: "pid",
                             initValue: initValue,
-                            tips: "请选择",
+                            tips: "不选择则为一级角色",
                             data: res.data,
-                            value: "0",
                             model: {"icon":"hidden","label":{"type":"text"}},
                             clickClose: true,
                             radio: true,

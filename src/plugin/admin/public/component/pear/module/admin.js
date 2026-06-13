@@ -169,6 +169,20 @@ layui.define(['jquery', 'tools', 'element', 'yaml', 'form', 'tabPage', 'menu', '
 			this.logoRender = function (param) {
 				$(".layui-logo .logo").attr("src", param.logo.image);
 				$(".layui-logo .title").html(param.logo.title);
+				pearAdmin.faviconRender(param.logo.image);
+			}
+
+			this.faviconRender = function (image) {
+				let favicon = $("link[rel='icon']");
+				if (!favicon.length) {
+					favicon = $("<link rel='icon'>").appendTo("head");
+				}
+				favicon.attr("href", image);
+				if (/\.svg(\?|#|$)/i.test(image)) {
+					favicon.attr("type", "image/svg+xml");
+				} else {
+					favicon.removeAttr("type");
+				}
 			}
 
 			/**

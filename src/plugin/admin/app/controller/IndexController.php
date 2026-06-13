@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
 use plugin\admin\app\common\Util;
@@ -8,7 +10,6 @@ use plugin\admin\app\model\User;
 use support\exception\BusinessException;
 use support\Request;
 use support\Response;
-use think\db\Where;
 use Throwable;
 use Workerman\Worker;
 
@@ -19,13 +20,13 @@ class IndexController
      * 无需登录的方法
      * @var string[]
      */
-    protected $noNeedLogin = ['index'];
+    protected array $noNeedLogin = ['index'];
 
     /**
      * 不需要鉴权的方法
      * @var string[]
      */
-    protected $noNeedAuth = ['dashboard'];
+    protected array $noNeedAuth = ['dashboard'];
 
     /**
      * 后台主页

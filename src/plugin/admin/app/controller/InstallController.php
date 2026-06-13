@@ -1,12 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
 use Illuminate\Database\Capsule\Manager;
+use PDO;
 use plugin\admin\app\common\Util;
 use support\exception\BusinessException;
 use support\Request;
 use support\Response;
+use Throwable;
 use Webman\Captcha\CaptchaBuilder;
 
 /**
@@ -24,7 +28,7 @@ class InstallController extends Base
      * 设置数据库
      * @param Request $request
      * @return Response
-     * @throws BusinessException|\Throwable
+     * @throws BusinessException|Throwable
      */
     public function step1(Request $request): Response
     {
@@ -42,8 +46,15 @@ class InstallController extends Base
         $password = $request->post('password');
         $database = $request->post('database');
         $host = $request->post('host');
-        $port = (int)$request->post('port') ?: 3306;
+        $port_value = $request->post('port');
         $overwrite = $request->post('overwrite');
+        if (!is_string($user) || !is_string($password) || !is_string($database) || !is_string($host) || !is_scalar($port_value)) {
+            return $this->json(1, '数据库配置参数错误');
+        }
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $database)) {
+            return $this->json(1, '数据库名只能是字母数字下划线的组合');
+        }
+        $port = (int)$port_value ?: 3306;
 
         try {
             $db = $this->getPdo($host, $user, $password, $port);
@@ -54,26 +65,25 @@ class InstallController extends Base
             $db->exec("use $database");
             $smt = $db->query("show tables");
             $tables = $smt->fetchAll();
-        } catch (\Throwable $e) {
-            if (stripos($e, 'Access denied for user')) {
+        } catch (Throwable $e) {
+            $message = $e->getMessage();
+            if (stripos($message, 'Access denied for user')) {
                 return $this->json(1, '数据库用户名或密码错误');
             }
-            if (stripos($e, 'Connection refused')) {
+            if (stripos($message, 'Connection refused')) {
                 return $this->json(1, 'Connection refused. 请确认数据库IP端口是否正确，数据库已经启动');
             }
-            if (stripos($e, 'timed out')) {
+            if (stripos($message, 'timed out')) {
                 return $this->json(1, '数据库连接超时，请确认数据库IP端口是否正确，安全组及防火墙已经放行端口');
             }
             throw $e;
         }
 
         $tables_to_install = [
-            'wa_admins',
-            'wa_admin_roles',
+            'wa_users',
             'wa_roles',
             'wa_rules',
             'wa_options',
-            'wa_users',
             'wa_uploads',
         ];
 
@@ -101,6 +111,10 @@ class InstallController extends Base
         $sql_query = $this->removeComments($sql_query);
         $sql_query = $this->splitSqlFile($sql_query, ';');
         foreach ($sql_query as $sql) {
+            $sql = trim($sql);
+            if ($sql === '') {
+                continue;
+            }
             $db->exec($sql);
         }
 
@@ -111,6 +125,9 @@ class InstallController extends Base
 
         $config_content = <<<EOF
 <?php
+
+declare(strict_types=1);
+
 return  [
     'default' => 'mysql',
     'connections' => [
@@ -135,6 +152,9 @@ EOF;
 
         $think_orm_config = <<<EOF
 <?php
+
+declare(strict_types=1);
+
 return [
     'default' => 'mysql',
     'connections' => [
@@ -187,13 +207,16 @@ EOF;
      * 设置管理员
      * @param Request $request
      * @return Response
-     * @throws BusinessException
+     * @throws BusinessException|Throwable
      */
     public function step2(Request $request): Response
     {
         $username = $request->post('username');
         $password = $request->post('password');
         $password_confirm = $request->post('password_confirm');
+        if (!is_string($username) || !is_string($password) || !is_string($password_confirm)) {
+            return $this->json(1, '管理员参数错误');
+        }
         if ($password != $password_confirm) {
             return $this->json(1, '两次密码不一致');
         }
@@ -201,31 +224,34 @@ EOF;
             return $this->json(1, '请先完成第一步数据库配置');
         }
         $config = include $config_file;
-        $connection = $config['connections']['mysql'];
+        $connection = is_array($config) ? ($config['connections']['mysql'] ?? null) : null;
+        if (!is_array($connection)) {
+            return $this->json(1, '数据库配置文件格式错误');
+        }
+        foreach (['host', 'username', 'password', 'port', 'database'] as $field) {
+            if (!array_key_exists($field, $connection) || !is_scalar($connection[$field])) {
+                return $this->json(1, '数据库配置文件格式错误');
+            }
+        }
         $pdo = $this->getPdo($connection['host'], $connection['username'], $connection['password'], $connection['port'], $connection['database']);
 
-        if ($pdo->query('select * from `wa_admins`')->fetchAll()) {
+        if ($pdo->query('select * from `wa_users`')->fetchAll()) {
             return $this->json(1, '后台已经安装完毕，无法通过此页面创建管理员');
         }
 
-        $smt = $pdo->prepare("insert into `wa_admins` (`username`, `password`, `nickname`, `created_at`, `updated_at`) values (:username, :password, :nickname, :created_at, :updated_at)");
+        $smt = $pdo->prepare("insert into `wa_users` (`username`, `password`, `nickname`, `role`, `created_at`, `updated_at`) values (:username, :password, :nickname, :role, :created_at, :updated_at)");
         $time = date('Y-m-d H:i:s');
         $data = [
             'username' => $username,
             'password' => Util::passwordHash($password),
             'nickname' => '超级管理员',
+            'role' => 1,
             'created_at' => $time,
             'updated_at' => $time
         ];
         foreach ($data as $key => $value) {
             $smt->bindValue($key, $value);
         }
-        $smt->execute();
-        $admin_id = $pdo->lastInsertId();
-
-        $smt = $pdo->prepare("insert into `wa_admin_roles` (`role_id`, `admin_id`) values (:role_id, :admin_id)");
-        $smt->bindValue('role_id', 1);
-        $smt->bindValue('admin_id', $admin_id);
         $smt->execute();
 
         $request->session()->flush();
@@ -235,29 +261,25 @@ EOF;
     /**
      * 添加菜单
      * @param array $menu
-     * @param \PDO $pdo
-     * @return int
+     * @param PDO $pdo
+     * @return false|string
      */
-    protected function addMenu(array $menu, \PDO $pdo): int
+    protected function addMenu(array $menu, PDO $pdo): false|string
     {
-        $allow_columns = ['title', 'key', 'icon', 'href', 'pid', 'weight', 'type'];
-        $data = [];
-        foreach ($allow_columns as $column) {
-            if (isset($menu[$column])) {
-                $data[$column] = $menu[$column];
-            }
-        }
         $time = date('Y-m-d H:i:s');
-        $data['created_at'] = $data['updated_at'] = $time;
-        $values = [];
-        foreach ($data as $k => $v) {
-            $values[] = ":$k";
-        }
-        $columns = array_keys($data);
-        foreach ($columns as $k => $column) {
-            $columns[$k] = "`$column`";
-        }
-        $sql = "insert into wa_rules (" .implode(',', $columns). ") values (" . implode(',', $values) . ")";
+        $data = [
+            'pid' => $menu['pid'] ?? null,
+            'title' => $menu['title'] ?? '',
+            'icon' => $menu['icon'] ?? null,
+            'key' => $menu['key'] ?? '',
+            'href' => $menu['href'] ?? null,
+            'type' => $menu['type'] ?? 1,
+            'open_type' => $menu['open_type'] ?? null,
+            'weight' => $menu['weight'] ?? 0,
+            'created_at' => $time,
+            'updated_at' => $time,
+        ];
+        $sql = "insert into wa_rules (`pid`, `title`, `icon`, `key`, `href`, `type`, `open_type`, `weight`, `created_at`, `updated_at`) values (:pid, :title, :icon, :key, :href, :type, :open_type, :weight, :created_at, :updated_at)";
         $smt = $pdo->prepare($sql);
         foreach ($data as $key => $value) {
             $smt->bindValue($key, $value);
@@ -269,10 +291,10 @@ EOF;
     /**
      * 导入菜单
      * @param array $menu_tree
-     * @param \PDO $pdo
+     * @param PDO $pdo
      * @return void
      */
-    protected function importMenu(array $menu_tree, \PDO $pdo)
+    protected function importMenu(array $menu_tree, PDO $pdo): void
     {
         if (is_numeric(key($menu_tree)) && !isset($menu_tree['key'])) {
             foreach ($menu_tree as $item) {
@@ -297,6 +319,9 @@ EOF;
             $smt->execute($params);
         } else {
             $pid = $this->addMenu($menu_tree, $pdo);
+            if (!$pid) {
+                return;
+            }
         }
         foreach ($children as $menu) {
             $menu['pid'] = $pid;
@@ -327,9 +352,9 @@ EOF;
         $matches = array();
         $token_count = count($tokens);
         for ($i = 0; $i < $token_count; $i++) {
-            if (($i != ($token_count - 1)) || (strlen($tokens[$i] > 0))) {
+            if (($i != ($token_count - 1)) || (strlen($tokens[$i]) > 0)) {
                 $total_quotes = preg_match_all("/'/", $tokens[$i], $matches);
-                $escaped_quotes = preg_match_all("/(?<!\\\\)(\\\\\\\\)*\\\\'/", $tokens[$i], $matches);
+                $escaped_quotes = preg_match_all("/(?<!\\\\)(\\\\\\\\)*\\\\'\//", $tokens[$i], $matches);
                 $unescaped_quotes = $total_quotes - $escaped_quotes;
 
                 if (($unescaped_quotes % 2) == 0) {
@@ -342,7 +367,7 @@ EOF;
                     $complete_stmt = false;
                     for ($j = $i + 1; (!$complete_stmt && ($j < $token_count)); $j++) {
                         $total_quotes = preg_match_all("/'/", $tokens[$j], $matches);
-                        $escaped_quotes = preg_match_all("/(?<!\\\\)(\\\\\\\\)*\\\\'/", $tokens[$j], $matches);
+                        $escaped_quotes = preg_match_all("/(?<!\\\\)(\\\\\\\\)*\\\\'\//", $tokens[$j], $matches);
                         $unescaped_quotes = $total_quotes - $escaped_quotes;
                         if (($unescaped_quotes % 2) == 1) {
                             $output[] = $temp . $tokens[$j];
@@ -370,9 +395,9 @@ EOF;
      * @param $password
      * @param $port
      * @param $database
-     * @return \PDO
+     * @return PDO
      */
-    protected function getPdo($host, $username, $password, $port, $database = null): \PDO
+    protected function getPdo($host, $username, $password, $port, $database = null): PDO
     {
         $dsn = "mysql:host=$host;port=$port;";
         if ($database) {
@@ -381,11 +406,11 @@ EOF;
         $params = [
             \Pdo\Mysql::ATTR_INIT_COMMAND => "set names utf8mb4",
             \Pdo\Mysql::ATTR_USE_BUFFERED_QUERY => true,
-            \PDO::ATTR_EMULATE_PREPARES => false,
-            \PDO::ATTR_TIMEOUT => 5,
-            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_TIMEOUT => 5,
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         ];
-        return new \PDO($dsn, $username, $password, $params);
+        return new PDO($dsn, $username, $password, $params);
     }
 
 }

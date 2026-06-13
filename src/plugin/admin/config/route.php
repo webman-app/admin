@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * This file is part of webman.
  *
@@ -34,4 +37,3 @@ Route::any('/app/admin/admin/css/pages/{file}', function (Request $request, $fil
 Route::fallback(function (Request $request) {
     return response($request->uri() . ' not found' , 404);
 }, 'admin');
-

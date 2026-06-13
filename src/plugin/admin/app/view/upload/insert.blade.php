@@ -68,7 +68,7 @@
                     dataType: "json",
                     success: function (res) {
                         let value = layui.$("#category").attr("value");
-                        let initValue = value ? value.split(",") : [];
+                        let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                         layui.xmSelect.render({
                             el: "#category",
                             name: "category",

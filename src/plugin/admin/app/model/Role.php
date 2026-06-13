@@ -1,7 +1,8 @@
 <?php
 
-namespace plugin\admin\app\model;
+declare(strict_types=1);
 
+namespace plugin\admin\app\model;
 
 /**
  * @property integer $id 主键(主键)
@@ -28,9 +29,9 @@ class Role extends Base
     protected $primaryKey = 'id';
 
     /**
-     * @return mixed
+     * @return array
      */
-    public function getRuleIds()
+    public function getRuleIds(): array
     {
         return $this->rules ? explode(',', $this->rules) : [];
     }

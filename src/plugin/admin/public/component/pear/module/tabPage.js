@@ -472,7 +472,7 @@ layui.define(['jquery', 'element', 'dropdown'], function (exports) {
 			$("#" + elem + " [id='" + currId + "']").parent().addClass("layui-show");
 		}
 		callback(currId);
-		tabData = JSON.parse(sessionStorage.getItem(elem + "-pear-tab-page-data"));
+		tabData = JSON.parse(sessionStorage.getItem(elem + "-pear-tab-page-data")) || [];
 		tabDataCurrent = sessionStorage.getItem(elem + "-pear-tab-page-data-current");
 		tabData = tabData.filter(function (item) {
 			return item.id != id;

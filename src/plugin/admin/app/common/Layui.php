@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\common;
 
 use support\exception\BusinessException;
@@ -11,40 +13,40 @@ class Layui
      * 生成的html代码
      * @var string
      */
-    protected $htmlContent = '';
+    protected string $htmlContent = '';
 
     /**
      * 生成的js代码
      * @var string
      */
-    protected $jsContent = '';
+    protected string $jsContent = '';
 
     /**
      * 获取生成的html代码
-     * @param $indent
+     * @param int $indent
      * @return string
      */
-    public function html($indent = 0): string
+    public function html(int $indent = 0): string
     {
         return str_replace("\n", "\n" . str_repeat('    ', $indent), $this->htmlContent);
     }
 
     /**
      * 获取生成的js代码
-     * @param $indent
+     * @param int $indent
      * @return string
      */
-    public function js($indent = 0): string
+    public function js(int $indent = 0): string
     {
         return str_replace("\n", "\n" . str_repeat('    ', $indent), $this->jsContent);
     }
 
     /**
      * 获取控件及相关参数
-     * @param $options
+     * @param array $options
      * @return array
      */
-    protected function options($options): array
+    protected function options(array $options): array
     {
         array_walk_recursive($options, function (&$item, $key) {
             if (is_string($item)) {
@@ -57,7 +59,7 @@ class Layui
         $field = $options['field'] ?? '';
         $props = !empty($options['props']) ? $options['props'] : [];
         $verify_string = !empty($props['lay-verify']) ? ' lay-verify="' . $props['lay-verify'] . '"' : '';
-        $required_string = strpos($verify_string, 'required') ? ' required' : '';
+        $required_string = str_contains($verify_string, 'required') ? ' required' : '';
         $label = !empty($options['label']) ? '<label class="layui-form-label' . $required_string . '">' . $options['label'] . '</label>' : '';
         $value = $props['value'] ?? '';
         $class = $props['class'] ?? 'layui-input-block';
@@ -67,10 +69,10 @@ class Layui
 
     /**
      * input输入框
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function input($options)
+    public function input(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
 
@@ -93,10 +95,10 @@ EOF;
 
     /**
      * input数字输入框
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function inputNumber($options)
+    public function inputNumber(array $options): void
     {
         $options['props']['type'] = 'number';
         $this->input($options);
@@ -104,10 +106,10 @@ EOF;
 
     /**
      * 输入框范围
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function inputRange($options)
+    public function inputRange(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
         $type = $props['type'] ?? 'text';
@@ -130,10 +132,10 @@ EOF;
 
     /**
      * 输入框模糊查询
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function inputLike($options)
+    public function inputLike(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
         $type = $props['type'] ?? 'text';
@@ -155,10 +157,10 @@ EOF;
 
     /**
      * 数字输入框范围
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function inputNumberRange($options)
+    public function inputNumberRange(array $options): void
     {
         $options['props']['type'] = 'number';
         $this->inputRange($options);
@@ -166,10 +168,10 @@ EOF;
 
     /**
      * 数字输入框模糊查询
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function inputNumberLike($options)
+    public function inputNumberLike(array $options): void
     {
         $options['props']['type'] = 'number';
         $this->inputLike($options);
@@ -177,10 +179,10 @@ EOF;
 
     /**
      * 密码输入框
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function inputPassword($options)
+    public function inputPassword(array $options): void
     {
         $options['props']['type'] = 'password';
         $this->input($options);
@@ -188,10 +190,10 @@ EOF;
 
     /**
      * 文本域
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function textArea($options)
+    public function textArea(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
 
@@ -212,10 +214,10 @@ EOF;
 
     /**
      * 富文本
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function richText($options)
+    public function richText(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
 
@@ -258,10 +260,10 @@ EOF;
 
     /**
      * json编辑框
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function jsonEditor($options)
+    public function jsonEditor(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
 
@@ -294,10 +296,10 @@ EOF;
 
     /**
      * 上传组件
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function upload($options)
+    public function upload(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
 
@@ -361,10 +363,10 @@ EOF;
 
     /**
      * 图片上传组件
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function uploadImage($options)
+    public function uploadImage(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
         $props['acceptMime'] = $props['acceptMime'] ?? 'image/gif,image/jpeg,image/jpg,image/png';
@@ -385,7 +387,7 @@ EOF;
 <div class="layui-form-item">
     $label
     <div class="$class">
-        <img class="img-3" src=""/>
+        <img class="img-3" src="" alt=""/>
         <input type="text" style="display:none" name="$field" value="$value" />
         <button type="button" class="pear-btn pear-btn-primary pear-btn-sm" id="$id"  permission="app.admin.upload.image">
             <i class="layui-icon layui-icon-upload"></i>上传图片
@@ -548,10 +550,10 @@ EOF;
 
     /**
      * 日期时间选择组件
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function dateTimePicker($options)
+    public function dateTimePicker(array $options): void
     {
         $options['props']['type'] = 'datetime';
         $this->datePicker($options);
@@ -559,10 +561,10 @@ EOF;
 
     /**
      * 日期选择组件
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function datePicker($options)
+    public function datePicker(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
         $value_string = $value ? ' value="' . $value . '"' : '';
@@ -596,10 +598,10 @@ EOF;
 
     /**
      * 日期时间范围选择组件
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function dateTimePickerRange($options)
+    public function dateTimePickerRange(array $options): void
     {
         $options['props']['type'] = 'datetime';
         $this->datePickerRange($options);
@@ -607,10 +609,10 @@ EOF;
 
     /**
      * 日期范围选择组件
-     * @param $options
+     * @param array &$options
      * @return void
      */
-    public function datePickerRange($options)
+    public function datePickerRange(array &$options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
         if (!isset($options['props']['type'])) {
@@ -652,20 +654,20 @@ EOF;
 
     /**
      * 创建id
-     * @param $field
-     * @return mixed
+     * @param string $field
+     * @return string
      */
-    protected function createId($field)
+    protected function createId(string $field): string
     {
         return $field;
     }
 
     /**
      * 图标选择组件
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function iconPicker($options)
+    public function iconPicker(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
 
@@ -703,10 +705,10 @@ EOF;
 
     /**
      * switch组件
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function switch($options)
+    public function switch(array $options): void
     {
         [$label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
 
@@ -745,9 +747,10 @@ EOF;
 
     /**
      * 下拉选择组件
+     * @param array $options
      * @return void
      */
-    public function select($options)
+    public function select(array $options): void
     {
         $options['props']['model'] = array_merge_recursive([
             'icon' => 'hidden',
@@ -762,9 +765,10 @@ EOF;
 
     /**
      * 下拉多选组件
+     * @param array $options
      * @return void
      */
-    public function selectMulti($options)
+    public function selectMulti(array $options): void
     {
         $options['props']['toolbar'] = array_merge_recursive([
             'show' => true,
@@ -775,9 +779,10 @@ EOF;
 
     /**
      * 树单选组件
+     * @param array $options
      * @return void
      */
-    public function treeSelect($options)
+    public function treeSelect(array $options): void
     {
         $options['props']['model'] = array_merge_recursive([
             'icon' => 'hidden',
@@ -799,9 +804,10 @@ EOF;
 
     /**
      * 树多选组件
+     * @param array $options
      * @return void
      */
-    public function treeSelectMulti($options)
+    public function treeSelectMulti(array $options): void
     {
         $options['props']['tree'] = array_merge_recursive(['show' => true,
             '$expandedKeys' => '$initValue'], $options['props']['tree'] ?? []);
@@ -815,10 +821,10 @@ EOF;
     /**
      * 选择框，支持单选、多选、树形选择
      * @see https://maplemei.gitee.io/xm-select/
-     * @param $options
+     * @param array $options
      * @return void
      */
-    public function apiSelect($options)
+    public function apiSelect(array $options): void
     {
         [$select_label, $field, $value, $props, $verify_string, $required_string, $class] = $this->options($options);
 
@@ -947,7 +953,7 @@ EOF;
                     $props['lay-verify'] = 'required';
                     // 非类似字符串类型不允许传空
                 } elseif (!in_array($columns[$key]['type'], ['string', 'text', 'mediumText', 'longText', 'char', 'binary', 'json'])
-                    && strpos($props['lay-verify'], 'required') === false) {
+                    && !str_contains($props['lay-verify'], 'required')) {
                     $props['lay-verify'] = 'required|' . $props['lay-verify'];
                 }
             }
@@ -985,12 +991,11 @@ EOF;
 
     /**
      * 构建表格
-     * @param $table
+     * @param string $table
      * @param int $indent
-     * @return array|string|string[]
-     * @throws BusinessException
+     * @return string
      */
-    public static function buildTable($table, int $indent = 0)
+    public static function buildTable(string $table, int $indent = 0): string
     {
         $schema = Util::getSchema($table);
         $forms = $schema['forms'];
@@ -1268,7 +1273,7 @@ EOF;
             if (is_array($v)) {
                 $props[$k] = $this->prepareProps($v);
             } elseif (!in_array($v, $raw_list) && !is_numeric($v)) {
-                if (strpos($v, '#') === 0) {
+                if (str_starts_with($v, '#')) {
                     $props[$k] = substr($v, 1);
                 } else {
                     $props[$k] = "\"$v\"";
@@ -1278,7 +1283,7 @@ EOF;
         return $props;
     }
 
-    private function preparePropsToJsObject($props, $indent = 0, $sub = false)
+    private function preparePropsToJsObject(array $props, int $indent = 0, bool $sub = false): string
     {
         $string = '';
         $indent_string = str_repeat('    ', $indent);
@@ -1300,6 +1305,4 @@ EOF;
         }
         return trim($string, "\n");
     }
-
-
 }

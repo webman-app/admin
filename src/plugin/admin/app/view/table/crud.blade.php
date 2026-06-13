@@ -85,7 +85,7 @@
                     dataType: "json",
                     success: function (res) {
                         let value = layui.$("#pid").attr("value");
-                        let initValue = value ? value.split(",") : [];
+                        let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                         layui.xmSelect.render({
                             el: "#pid",
                             name: "pid",

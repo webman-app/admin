@@ -105,23 +105,7 @@
                         </div>
                     </div>
                     
-                    <div class="layui-form-item">
-                        <label class="layui-form-label">注册时间</label>
-                        <div class="layui-input-block">
-                            <div class="layui-input-block" id="join_time">
-                                <input type="text" autocomplete="off" name="join_time[]" id="join_time-date-start" class="layui-input inline-block" placeholder="开始时间">
-                                -
-                                <input type="text" autocomplete="off" name="join_time[]" id="join_time-date-end" class="layui-input inline-block" placeholder="结束时间">
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="layui-form-item">
-                        <label class="layui-form-label">注册ip</label>
-                        <div class="layui-input-block">
-                            <input type="text" name="join_ip" value="" class="layui-input">
-                        </div>
-                    </div>
+
                     
                     <div class="layui-form-item layui-inline">
                         <label class="layui-form-label"></label>
@@ -184,7 +168,7 @@
                     dataType: "json",
                     success: function (res) {
                         let value = layui.$("#sex").attr("value");
-                        let initValue = value ? value.split(",") : [];
+                        let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                         layui.xmSelect.render({
                             el: "#sex",
                             name: "sex",
@@ -214,15 +198,6 @@
                 layui.laydate.render({
                     elem: "#last_time",
                     range: ["#last_time-date-start", "#last_time-date-end"],
-                    type: "datetime",
-                });
-            })
-            
-            // 字段 注册时间 join_time
-            layui.use(["laydate"], function() {
-                layui.laydate.render({
-                    elem: "#join_time",
-                    range: ["#join_time-date-start", "#join_time-date-end"],
                     type: "datetime",
                 });
             })
@@ -269,7 +244,8 @@
 						title: "头像",
 						field: "avatar",
 						templet: function (d) {
-							return '<img src="'+encodeURI(d['avatar'])+'" style="max-width:32px;max-height:32px;" alt="" />'
+							var avatar = d['avatar'] || '/app/admin/avatar.png';
+							return '<img src="'+encodeURI(avatar)+'" style="max-width:32px;max-height:32px;" alt="" />'
 						}
 					},{
 						title: "邮箱",
@@ -284,6 +260,10 @@
 					},{
 						title: "生日",
 						field: "birthday",
+						hide: true,
+					},{
+						title: "个人简介",
+						field: "bio",
 						hide: true,
 					},{
 						title: "余额(元)",
@@ -302,16 +282,16 @@
 						field: "last_ip",
 						hide: true,
 					},{
-						title: "注册时间",
-						field: "join_time",
-						hide: true,
-					},{
-						title: "注册ip",
-						field: "join_ip",
-						hide: true,
-					},{
 						title: "token",
 						field: "token",
+						hide: true,
+					},{
+						title: "角色",
+						field: "role",
+						hide: true,
+					},{
+						title: "禁用",
+						field: "status",
 						hide: true,
 					},{
 						title: "创建时间",
@@ -322,38 +302,10 @@
 						field: "updated_at",
 						hide: true,
 					},{
-						title: "角色",
-						field: "role",
-						hide: true,
-					},{
-						title: "禁用",
-						field: "status",
-						templet: function (d) {
-							let field = "status";
-							form.on("switch("+field+")", function (data) {
-								let load = layer.load();
-								let postData = {};
-								postData[field] = data.elem.checked ? 1 : 0;
-								postData[PRIMARY_KEY] = this.value;
-								$.post(UPDATE_API, postData, function (res) {
-									layer.close(load);
-									if (res.code) {
-                                        return layui.popup.failure(res.msg, function () {
-                                            data.elem.checked = !data.elem.checked;
-                                            form.render();
-                                        });
-				                    }
-									return layui.popup.success("操作成功");
-								})
-							});
-							let checked = d[field] === 1 ? "checked" : "";
-							return '<input type="checkbox" value="'+util.escape(d[PRIMARY_KEY])+'" lay-filter="'+util.escape(field)+'" lay-skin="switch" lay-text="'+util.escape('')+'" '+checked+'/>';
-						}
-					},{
 						title: "操作",
 						toolbar: "#table-bar",
 						align: "center",
-						                        width: 130,
+						width: 130,
 					}
 				];
 				
@@ -473,6 +425,7 @@
                         type: 2,
                         title: "新增",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile()?"100%":"750px", common.isModile()?"100%":"625px"],
                         content: INSERT_URL
                     });
@@ -485,6 +438,7 @@
                         type: 2,
                         title: "修改",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile()?"100%":"750px", common.isModile()?"100%":"625px"],
                         content: UPDATE_URL + "?" + PRIMARY_KEY + "=" + value
                     });

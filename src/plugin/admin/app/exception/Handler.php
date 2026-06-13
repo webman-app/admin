@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 /**
  * This file is part of webman.
  *
@@ -17,6 +19,8 @@ namespace plugin\admin\app\exception;
 use Throwable;
 use Webman\Http\Request;
 use Webman\Http\Response;
+use function json_encode;
+use function nl2br;
 
 /**
  * Class Handler
@@ -32,9 +36,9 @@ class Handler extends \support\exception\Handler
             $json = ['code' => $code ?: 500, 'msg' => $debug ? $exception->getMessage() : 'Server internal error', 'type' => 'failed'];
             $debug && $json['traces'] = (string)$exception;
             return new Response(200, ['Content-Type' => 'application/json'],
-                \json_encode($json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                json_encode($json, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         }
-        $error = $debug ? \nl2br((string)$exception) : 'Server internal error';
+        $error = $debug ? nl2br((string)$exception) : 'Server internal error';
         return new Response(500, [], $error);
     }
 }

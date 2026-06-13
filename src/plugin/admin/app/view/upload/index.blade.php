@@ -115,7 +115,7 @@
                     dataType: "json",
                     success: function (res) {
                         let value = layui.$("#category").attr("value");
-                        let initValue = value ? value.split(",") : [];
+                        let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                         layui.xmSelect.render({
                             el: "#category",
                             name: "category",
@@ -150,6 +150,10 @@
                         width: 80,
 						sort: true,
 					},{
+						title: "用户id",
+						field: "user_id",
+						hide: true,
+					},{
 						title: "名字",
 						field: "name",
 					},{
@@ -161,14 +165,6 @@
                             }
 							return '<a href="' + encodeURI(d['url']) + '" target="_blank">' + util.escape(d['url']) + '</a>';
 						}
-					},{
-						title: "管理员id",
-						field: "admin_id",
-						hide: true,
-					},{
-						title: "用户id",
-						field: "user_id",
-						hide: true,
 					},{
 						title: "文件大小",
 						field: "file_size",
@@ -193,10 +189,6 @@
 						field: "storage",
 						hide: true,
 					},{
-						title: "上传时间",
-						field: "created_at",
-						hide: true,
-					},{
 						title: "类别",
 						field: "category",
 						templet: function (d) {
@@ -208,6 +200,10 @@
 							});
 							return util.escape(items.join(","));
 						}
+					},{
+						title: "上传时间",
+						field: "created_at",
+						hide: true,
 					},{
 						title: "更新时间",
 						field: "updated_at",
@@ -336,6 +332,7 @@
                         type: 2,
                         title: "新增",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile()?"100%":"500px", common.isModile()?"100%":"380px"],
                         content: INSERT_URL
                     });
@@ -348,6 +345,7 @@
                         type: 2,
                         title: "修改",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile()?"100%":"500px", common.isModile()?"100%":"380px"],
                         content: UPDATE_URL + "?" + PRIMARY_KEY + "=" + value
                     });

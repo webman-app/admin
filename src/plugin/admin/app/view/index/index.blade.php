@@ -4,6 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
         <title>{{ $site_title }}</title>
+        <link rel="icon" href="/app/admin/admin/images/logo.png">
         <link rel="stylesheet" href="/app/admin/css/style.css" />
         <link rel="stylesheet" href="/app/admin/css/index.css" />
     </head>

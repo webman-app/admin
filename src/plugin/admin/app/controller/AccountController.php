@@ -1,14 +1,18 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
+use Exception;
+use Throwable;
 use plugin\admin\app\common\Auth;
 use plugin\admin\app\common\Util;
-use plugin\admin\app\model\Admin;
+use plugin\admin\app\model\Role;
+use plugin\admin\app\model\User;
 use support\exception\BusinessException;
 use support\Request;
 use support\Response;
-use Throwable;
 use Webman\Captcha\CaptchaBuilder;
 use Webman\Captcha\PhraseBuilder;
 
@@ -30,7 +34,7 @@ class AccountController extends Crud
     protected $noNeedAuth = ['info'];
 
     /**
-     * @var Admin
+     * @var User
      */
     protected $model = null;
 
@@ -39,7 +43,7 @@ class AccountController extends Crud
      */
     public function __construct()
     {
-        $this->model = new Admin;
+        $this->model = new User;
     }
 
     /**
@@ -47,7 +51,7 @@ class AccountController extends Crud
      * @return Response
      * @throws Throwable
      */
-    public function index()
+    public function index(): Response
     {
         return view('account/index');
     }
@@ -56,38 +60,42 @@ class AccountController extends Crud
      * 登录
      * @param Request $request
      * @return Response
-     * @throws BusinessException
+     * @throws BusinessException|Exception
      */
     public function login(Request $request): Response
     {
         $this->checkDatabaseAvailable();
         $captcha = $request->post('captcha', '');
-        if (strtolower($captcha) !== session('captcha-login')) {
+        if (!is_string($captcha) || strtolower($captcha) !== session('captcha-login')) {
             return $this->json(1, '验证码错误');
         }
         $request->session()->forget('captcha-login');
         $username = $request->post('username', '');
         $password = $request->post('password', '');
+        if (!is_string($username) || !is_string($password)) {
+            return $this->json(1, '参数错误');
+        }
         if (!$username) {
             return $this->json(1, '用户名不能为空');
         }
         $this->checkLoginLimit($username);
-        $admin = Admin::where('username', $username)->first();
+        $admin = User::where('username', $username)->first();
         if (!$admin || !Util::passwordVerify($password, $admin->password)) {
             return $this->json(1, '账户不存在或密码错误');
         }
         if ($admin->status != 0) {
             return $this->json(1, '当前账户暂时无法登录');
         }
-        $admin->login_at = date('Y-m-d H:i:s');
+        $admin->last_time = date('Y-m-d H:i:s');
         $admin->save();
         $this->removeLoginLimit($username);
         $admin = $admin->toArray();
+        $nickname = $admin['nickname'];
         $session = $request->session();
-        $admin['password'] = md5($admin['password']);
-        $session->set('admin', $admin);
+        $admin = format_admin_session_user($admin);
+        $session->set('user', $admin);
         return $this->json(0, '登录成功', [
-            'nickname' => $admin['nickname'],
+            'nickname' => $nickname,
             'token' => $request->sessionId(),
         ]);
     }
@@ -96,10 +104,11 @@ class AccountController extends Crud
      * 退出
      * @param Request $request
      * @return Response
+     * @throws Exception
      */
     public function logout(Request $request): Response
     {
-        $request->session()->delete('admin');
+        $request->session()->delete('user');
         return $this->json(0);
     }
 
@@ -107,6 +116,7 @@ class AccountController extends Crud
      * 获取登录信息
      * @param Request $request
      * @return Response
+     * @throws Exception
      */
     public function info(Request $request): Response
     {
@@ -114,13 +124,51 @@ class AccountController extends Crud
         if (!$admin) {
             return $this->json(1);
         }
+        $user = User::select([
+            'id',
+            'username',
+            'nickname',
+            'sex',
+            'avatar',
+            'email',
+            'mobile',
+            'level',
+            'birthday',
+            'bio',
+            'money',
+            'score',
+            'last_time',
+            'last_ip',
+            'role',
+            'status',
+            'created_at',
+            'updated_at',
+        ])->find(admin_id());
+        if (!$user) {
+            return $this->json(1, '用户不存在');
+        }
+        $role_name = Role::where('id', $user->role)->value('name') ?: (string)$user->role;
         $info = [
-            'id' => $admin['id'],
-            'username' => $admin['username'],
-            'nickname' => $admin['nickname'],
-            'avatar' => $admin['avatar'],
-            'email' => $admin['email'],
-            'mobile' => $admin['mobile'],
+            'id' => $user->id,
+            'username' => $user->username,
+            'nickname' => $user->nickname,
+            'sex' => $user->sex,
+            'avatar' => $user->avatar,
+            'email' => $user->email,
+            'mobile' => $user->mobile,
+            'level' => $user->level,
+            'birthday' => $user->birthday,
+            'bio' => $user->bio,
+            'money' => $user->money,
+            'score' => $user->score,
+            'last_time' => $user->last_time,
+            'last_ip' => $user->last_ip,
+            'role' => $user->role,
+            'role_name' => $role_name,
+            'status' => $user->status,
+            'status_text' => $user->status ? '禁用' : '正常',
+            'created_at' => $user->created_at,
+            'updated_at' => $user->updated_at,
             'isSuperAdmin' => Auth::isSuperAdmin(),
             'token' => $request->sessionId(),
         ];
@@ -137,28 +185,77 @@ class AccountController extends Crud
         $allow_column = [
             'nickname' => 'nickname',
             'avatar' => 'avatar',
+            'sex' => 'sex',
             'email' => 'email',
             'mobile' => 'mobile',
+            'birthday' => 'birthday',
+            'bio' => 'bio',
         ];
 
         $data = $request->post();
         $update_data = [];
         foreach ($allow_column as $key => $column) {
             if (isset($data[$key])) {
+                if (!is_string($data[$key])) {
+                    return $this->json(1, '参数错误');
+                }
                 $update_data[$column] = $data[$key];
             }
         }
         if (isset($update_data['password'])) {
             $update_data['password'] = Util::passwordHash($update_data['password']);
         }
-        Admin::where('id', admin_id())->update($update_data);
-        $admin = admin();
-        unset($update_data['password']);
-        foreach ($update_data as $key => $value) {
-            $admin[$key] = $value;
+        if (array_key_exists('birthday', $update_data) && $update_data['birthday'] === '') {
+            $update_data['birthday'] = null;
         }
-        $request->session()->set('admin', $admin);
+        if (array_key_exists('sex', $update_data) && $update_data['sex'] === '') {
+            $update_data['sex'] = '0';
+        }
+        $update_data = $this->normalizeUniqueContactFields($update_data);
+        if ($msg = $this->checkUniqueContactFields($update_data, admin_id())) {
+            return $this->json(1, $msg);
+        }
+        User::where('id', admin_id())->update($update_data);
         return $this->json(0);
+    }
+
+    /**
+     * 唯一联系方式字段为空时存 null，避免多个空字符串触发唯一索引冲突
+     * @param array $data 账户表单数据
+     * @return array
+     */
+    protected function normalizeUniqueContactFields(array $data): array
+    {
+        foreach (['email', 'mobile'] as $field) {
+            if (array_key_exists($field, $data) && $data[$field] === '') {
+                $data[$field] = null;
+            }
+        }
+        return $data;
+    }
+
+    /**
+     * 检查唯一联系方式字段
+     * @param array $data 账户表单数据
+     * @param int|null $ignore_id 需要排除的用户 ID
+     * @return string
+     */
+    protected function checkUniqueContactFields(array $data, ?int $ignore_id = null): string
+    {
+        $labels = ['email' => '邮箱', 'mobile' => '手机号'];
+        foreach ($labels as $field => $label) {
+            if (empty($data[$field])) {
+                continue;
+            }
+            $query = User::where($field, $data[$field]);
+            if ($ignore_id !== null) {
+                $query->where('id', '<>', $ignore_id);
+            }
+            if ($query->exists()) {
+                return "{$label}已存在";
+            }
+        }
+        return '';
     }
 
     /**
@@ -168,21 +265,30 @@ class AccountController extends Crud
      */
     public function password(Request $request): Response
     {
-        $hash = Admin::find(admin_id())['password'];
+        $user = User::find(admin_id());
+        if (!$user) {
+            return $this->json(1, '用户不存在');
+        }
+        $hash = $user['password'];
+        $old_password = $request->post('old_password');
         $password = $request->post('password');
+        $password_confirm = $request->post('password_confirm');
+        if (!is_string($old_password) || !is_string($password) || !is_string($password_confirm)) {
+            return $this->json(1, '参数错误');
+        }
         if (!$password) {
             return $this->json(2, '密码不能为空');
         }
-        if ($request->post('password_confirm') !== $password) {
+        if ($password_confirm !== $password) {
             return $this->json(3, '两次密码输入不一致');
         }
-        if (!Util::passwordVerify($request->post('old_password'), $hash)) {
+        if (!Util::passwordVerify($old_password, $hash)) {
             return $this->json(1, '原始密码不正确');
         }
         $update_data = [
-            'password' => Util::passwordHash($password)
+            'password' => Util::passwordHash($password),
         ];
-        Admin::where('id', admin_id())->update($update_data);
+        User::where('id', admin_id())->update($update_data);
         return $this->json(0);
     }
 
@@ -191,6 +297,7 @@ class AccountController extends Crud
      * @param Request $request
      * @param string $type
      * @return Response
+     * @throws Exception
      */
     public function captcha(Request $request, string $type = 'login'): Response
     {
@@ -204,11 +311,11 @@ class AccountController extends Crud
 
     /**
      * 检查登录频率限制
-     * @param $username
+     * @param string $username
      * @return void
      * @throws BusinessException
      */
-    protected function checkLoginLimit($username)
+    protected function checkLoginLimit(string $username): void
     {
         $limit_log_path = runtime_path() . '/login';
         if (!is_dir($limit_log_path)) {
@@ -219,10 +326,11 @@ class AccountController extends Crud
         $limit_info = [];
         if (is_file($limit_file)) {
             $json_str = file_get_contents($limit_file);
-            $limit_info = json_decode($json_str, true);
+            $decoded = json_decode($json_str, true);
+            $limit_info = is_array($decoded) ? $decoded : [];
         }
 
-        if (!$limit_info || $limit_info['time'] != $time) {
+        if (!isset($limit_info['time']) || $limit_info['time'] != $time) {
             $limit_info = [
                 'username' => $username,
                 'count' => 0,
@@ -238,10 +346,10 @@ class AccountController extends Crud
 
     /**
      * 解除登录频率限制
-     * @param $username
+     * @param string $username
      * @return void
      */
-    protected function removeLoginLimit($username)
+    protected function removeLoginLimit(string $username): void
     {
         $limit_log_path = runtime_path() . '/login';
         $limit_file = $limit_log_path . '/' . md5($username) . '.limit';
@@ -250,7 +358,7 @@ class AccountController extends Crud
         }
     }
 
-    protected function checkDatabaseAvailable()
+    protected function checkDatabaseAvailable(): void
     {
         if (!config('plugin.admin.database')) {
             throw new BusinessException('请重启webman');

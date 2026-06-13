@@ -14,6 +14,69 @@
                 <div class="main-container mr-5">
 
                     <div class="layui-form-item">
+                        <label class="layui-form-label">文件名</label>
+                        <div class="layui-input-block">
+                            <input type="text" name="name" value="" class="layui-input" readonly>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">文件地址</label>
+                        <div class="layui-input-block">
+                            <input type="text" name="url" value="" class="layui-input" readonly>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">用户id</label>
+                        <div class="layui-input-block">
+                            <input type="text" name="user_id" value="" class="layui-input" readonly>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">文件大小</label>
+                        <div class="layui-input-block">
+                            <input type="text" name="file_size" value="" class="layui-input" readonly>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">mime类型</label>
+                        <div class="layui-input-block">
+                            <input type="text" name="mime_type" value="" class="layui-input" readonly>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">图片宽度</label>
+                        <div class="layui-input-block">
+                            <input type="text" name="image_width" value="" class="layui-input" readonly>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">图片高度</label>
+                        <div class="layui-input-block">
+                            <input type="text" name="image_height" value="" class="layui-input" readonly>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">扩展名</label>
+                        <div class="layui-input-block">
+                            <input type="text" name="ext" value="" class="layui-input" readonly>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">存储位置</label>
+                        <div class="layui-input-block">
+                            <input type="text" name="storage" value="" class="layui-input" readonly>
+                        </div>
+                    </div>
+
+                    <div class="layui-form-item">
                         <label class="layui-form-label" style="width:inherit">类别</label>
                         <div class="layui-input-block" style="margin-left:60px;">
                             <div name="category" id="category" value="" ></div>
@@ -84,7 +147,7 @@
                                 dataType: "json",
                                 success: function (res) {
                                     let value = layui.$("#category").attr("value");
-                                    let initValue = value ? value.split(",") : [];
+                                    let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                                     layui.xmSelect.render({
                                         el: "#category",
                                         name: "category",

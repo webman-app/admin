@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
     [
         'title' => '数据库',
@@ -24,13 +26,6 @@ return [
         'weight' => 900,
         'type' => 0,
         'children' => [
-            [
-                'title' => '账户管理',
-                'key' => 'plugin\\admin\\app\\controller\\AdminController',
-                'href' => '/app/admin/admin/index',
-                'type' => 1,
-                'weight' => 1000,
-            ],
             [
                 'title' => '角色管理',
                 'key' => 'plugin\\admin\\app\\controller\\RoleController',

@@ -9,3 +9,4 @@ src/plugin/admin/config/thinkorm.php
 src/plugin/admin.zip
 composer.lock
 /.uploads
+/.trae

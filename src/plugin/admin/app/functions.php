@@ -1,31 +1,69 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * Here is your custom functions.
  */
 
-use plugin\admin\app\model\Admin;
-use plugin\admin\app\model\AdminRole;
+use plugin\admin\app\model\User;
 use support\Response;
 
 /**
- * 当前管理员id
- * @return integer|null
+ * session 中需要保存的用户字段
+ * @return string[]
  */
-function admin_id(): ?int
+function admin_session_user_fields(): array
 {
-    return session('admin.id');
+    return ['id', 'password', 'role', 'status'];
 }
 
 /**
- * 当前管理员
- * @param null|array|string $fields
+ * 格式化 session 用户信息
+ * @param array $user
+ * @param int|null $session_last_update_time
+ * @return array
+ */
+function format_admin_session_user(array $user, ?int $session_last_update_time = null): array
+{
+    $result = [];
+    foreach (admin_session_user_fields() as $field) {
+        $result[$field] = $user[$field] ?? null;
+    }
+    $result['password'] = md5((string)$result['password']);
+    if ($session_last_update_time !== null) {
+        $result['session_last_update_time'] = $session_last_update_time;
+    }
+    return $result;
+}
+
+/**
+ * 当前用户id
+ * @return integer|null
+ * @throws Exception
+ */
+function admin_id(): ?int
+{
+    $admin_id = session('user.id');
+    if (!is_scalar($admin_id) && $admin_id !== null) {
+        return null;
+    }
+    if ($admin_id === null || $admin_id === '') {
+        return null;
+    }
+    return (int)$admin_id;
+}
+
+/**
+ * 当前用户
+ * @param array|string|null $fields
  * @return array|mixed|null
  * @throws Exception
  */
-function admin($fields = null)
+function admin(array|string|null $fields = null): mixed
 {
     refresh_admin_session();
-    if (!$admin = session('admin')) {
+    if (!$admin = session('user')) {
         return null;
     }
     if ($fields === null) {
@@ -34,55 +72,62 @@ function admin($fields = null)
     if (is_array($fields)) {
         $results = [];
         foreach ($fields as $field) {
+            if (!is_scalar($field)) {
+                continue;
+            }
             $results[$field] = $admin[$field] ?? null;
         }
         return $results;
+    }
+    if (!is_scalar($fields)) {
+        return null;
     }
     return $admin[$fields] ?? null;
 }
 
 
 /**
- * 刷新当前管理员session
+ * 刷新当前用户session
  * @param bool $force
  * @return void
  * @throws Exception
  */
 function refresh_admin_session(bool $force = false)
 {
-    $admin_session = session('admin');
-    if (!$admin_session) {
+    $user_session = session('user');
+    if (!$user_session || !is_array($user_session)) {
         return null;
     }
-    $admin_id = $admin_session['id'];
+    if (!isset($user_session['id']) || !is_scalar($user_session['id'])) {
+        return null;
+    }
+    $user_id = $user_session['id'];
     $time_now = time();
     // session在2秒内不刷新
     $session_ttl = 2;
-    $session_last_update_time = session('admin.session_last_update_time', 0);
+    $session_last_update_time = session('user.session_last_update_time', 0);
     if (!$force && $time_now - $session_last_update_time < $session_ttl) {
         return null;
     }
     $session = request()->session();
-    $admin = Admin::find($admin_id);
-    if (!$admin) {
-        $session->forget('admin');
+    $user = User::select(admin_session_user_fields())->find($user_id);
+    if (!$user) {
+        $session->forget('user');
         return null;
     }
-    $admin = $admin->toArray();
-    $admin['password'] = md5($admin['password']);
-    $admin_session['password'] = $admin_session['password'] ?? '';
-    if ($admin['password'] != $admin_session['password']) {
-        $session->forget('admin');
+    $user = method_exists($user, 'toArray') ? $user->toArray() : (array)$user;
+    $user_session['password'] = $user_session['password'] ?? '';
+    $user = format_admin_session_user($user, $time_now);
+    if ($user['password'] != $user_session['password']) {
+        $session->forget('user');
         return null;
     }
     // 账户被禁用
-    if ($admin['status'] != 0) {
-        $session->forget('admin');
+    if ($user['status'] != 0) {
+        $session->forget('user');
         return;
     }
-    $admin['roles'] = AdminRole::where('admin_id', $admin_id)->pluck('role_id')->toArray();
-    $admin['session_last_update_time'] = $time_now;
-    $session->set('admin', $admin);
+    $session->set('user', $user);
 }
 
 function admin_error_401_script(): Response

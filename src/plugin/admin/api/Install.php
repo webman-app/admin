@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\api;
 
 class Install
@@ -10,7 +12,7 @@ class Install
      * @param $version
      * @return void
      */
-    public static function install($version)
+    public static function install($version): void
     {
         // 导入菜单
         Menu::import(static::getMenus());
@@ -22,7 +24,7 @@ class Install
      * @param $version
      * @return void
      */
-    public static function uninstall($version)
+    public static function uninstall($version): void
     {
         // 删除菜单
         foreach (static::getMenus() as $menu) {
@@ -38,7 +40,7 @@ class Install
      * @param $context
      * @return void
      */
-    public static function update($from_version, $to_version, $context = null)
+    public static function update($from_version, $to_version, $context = null): void
     {
         // 删除不用的菜单
         if (isset($context['previous_menus'])) {
@@ -55,7 +57,7 @@ class Install
      * @param $to_version
      * @return array|array[]
      */
-    public static function beforeUpdate($from_version, $to_version)
+    public static function beforeUpdate($from_version, $to_version): array
     {
         // 在更新之前获得老菜单，通过context传递给 update
         return ['previous_menus' => static::getMenus()];
@@ -66,7 +68,7 @@ class Install
      *
      * @return array|mixed
      */
-    public static function getMenus()
+    public static function getMenus(): mixed
     {
         clearstatcache();
         if (is_file($menu_file = __DIR__ . '/../config/menu.php')) {
@@ -82,7 +84,7 @@ class Install
      * @param $previous_menus
      * @return void
      */
-    public static function removeUnnecessaryMenus($previous_menus)
+    public static function removeUnnecessaryMenus($previous_menus): void
     {
         $menus_to_remove = array_diff(Menu::column($previous_menus, 'name'), Menu::column(static::getMenus(), 'name'));
         foreach ($menus_to_remove as $name) {

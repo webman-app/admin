@@ -1,14 +1,13 @@
 <?php
 
-namespace plugin\admin\app\model;
+declare(strict_types=1);
 
-use plugin\admin\app\model\Base;
+namespace plugin\admin\app\model;
 
 /**
  * @property integer $id 主键(主键)
  * @property string $name 名称
  * @property string $url url
- * @property integer $admin_id 管理员
  * @property integer $user_id 用户
  * @property integer $file_size 文件大小
  * @property string $mime_type mime类型
@@ -35,8 +34,4 @@ class Upload extends Base
      * @var string
      */
     protected $primaryKey = 'id';
-    
-    
-    
-    
 }

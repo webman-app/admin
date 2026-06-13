@@ -1,8 +1,8 @@
 <?php
 
-namespace plugin\admin\app\model;
+declare(strict_types=1);
 
-use plugin\admin\app\model\Base;
+namespace plugin\admin\app\model;
 
 /**
  * @property integer $id 主键(主键)
@@ -19,8 +19,6 @@ use plugin\admin\app\model\Base;
  * @property integer $score 积分
  * @property string $last_time 登录时间
  * @property string $last_ip 登录ip
- * @property string $join_time 注册时间
- * @property string $join_ip 注册ip
  * @property string $token token
  * @property string $created_at 创建时间
  * @property string $updated_at 更新时间
@@ -42,8 +40,4 @@ class User extends Base
      * @var string
      */
     protected $primaryKey = 'id';
-    
-    
-    
-    
 }

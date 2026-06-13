@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
 use support\Response;
@@ -15,7 +17,7 @@ class DevController
      * @return Response
      * @throws Throwable
      */
-    public function formBuild()
+    public function formBuild(): Response
     {
         return view('dev/form-build');
     }

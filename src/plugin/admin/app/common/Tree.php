@@ -1,43 +1,44 @@
 <?php
-namespace plugin\admin\app\common;
 
+declare(strict_types=1);
+
+namespace plugin\admin\app\common;
 
 class Tree
 {
-
     /**
      * 获取完整的树结构，包含祖先节点
      */
-    const INCLUDE_ANCESTORS = 1;
+    public const INCLUDE_ANCESTORS = 1;
 
     /**
      * 获取部分树，不包含祖先节点
      */
-    const EXCLUDE_ANCESTORS = 0;
+    public const EXCLUDE_ANCESTORS = 0;
 
     /**
      * 数据
      * @var array
      */
-    protected $data = [];
+    protected array $data = [];
 
     /**
      * 哈希树
      * @var array
      */
-    protected $hashTree = [];
+    protected array $hashTree = [];
 
     /**
      * 父级字段名
      * @var string
      */
-    protected $pidName = 'pid';
+    protected string $pidName = 'pid';
 
     /**
-     * @param $data
-     * @param string $pid_name
+     * @param object|array $data 原始树节点数据
+     * @param string $pid_name 父级字段名
      */
-    public function __construct($data, string $pid_name = 'pid')
+    public function __construct(object|array $data, string $pid_name = 'pid')
     {
         $this->pidName = $pid_name;
         if (is_object($data) && method_exists($data, 'toArray')) {
@@ -56,8 +57,8 @@ class Tree
 
     /**
      * 获取子孙节点
-     * @param array $include
-     * @param bool $with_self
+     * @param array $include 起始节点 ID 列表
+     * @param bool $with_self 是否包含起始节点自身
      * @return array
      */
     public function getDescendant(array $include, bool $with_self = false): array
@@ -65,7 +66,7 @@ class Tree
         $items = [];
         foreach ($include as $id) {
             if (!isset($this->hashTree[$id])) {
-                return [];
+                continue;
             }
             if ($with_self) {
                 $item = $this->hashTree[$id];
@@ -85,7 +86,7 @@ class Tree
 
     /**
      * 获取哈希树
-     * @param array $data
+     * @param array $data 树节点数据
      * @return array
      */
     protected function getHashTree(array $data = []): array
@@ -93,20 +94,25 @@ class Tree
         $data = $data ?: $this->data;
         $hash_tree = [];
         foreach ($data as $item) {
+            if (!is_array($item) || !array_key_exists('id', $item)) {
+                continue;
+            }
             $hash_tree[$item['id']] = $item;
         }
-        foreach ($hash_tree as $index => $item) {
-            if ($item[$this->pidName] && isset($hash_tree[$item[$this->pidName]])) {
-                $hash_tree[$item[$this->pidName]]['children'][$hash_tree[$index]['id']] = &$hash_tree[$index];
+        foreach ($hash_tree as $id => &$item) {
+            $pid = $item[$this->pidName] ?? null;
+            if ($pid && isset($hash_tree[$pid])) {
+                $hash_tree[$pid]['children'][$id] = &$item;
             }
         }
+        unset($item);
         return $hash_tree;
     }
 
     /**
      * 获取树
-     * @param array $include
-     * @param int $type
+     * @param array $include 需要包含的节点 ID 列表
+     * @param int $type 包含祖先节点或仅返回指定节点
      * @return array|null
      */
     public function getTree(array $include = [], int $type = 1): ?array
@@ -164,10 +170,10 @@ class Tree
 
     /**
      * 递归重建数组下标
-     * @param $array
+     * @param array $array 树数组
      * @return array
      */
-    public static function arrayValues($array): array
+    public static function arrayValues(array $array): array
     {
         if (!$array) {
             return [];

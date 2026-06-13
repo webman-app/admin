@@ -123,7 +123,7 @@
                         dataType: "json",
                         success: function (res) {
                             let value = layui.$("#category").attr("value");
-                            let initValue = value ? value.split(",") : [];
+                            let initValue = value ? value.split(",").filter(function(v){return v!==''}) : [];
                             layui.xmSelect.render({
                                 el: "#category",
                                 name: "category",
@@ -164,10 +164,6 @@
                             }
 							return '<a href="' + encodeURI(d['url']) + '" target="_blank">' + util.escape(d['url']) + '</a>';
 						}
-					},{
-						title: "管理员id",
-						field: "admin_id",
-						hide: true,
 					},{
 						title: "用户id",
 						field: "user_id",
@@ -347,6 +343,7 @@
                         type: 2,
                         title: "新增",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile()?"100%":"500px", common.isModile()?"100%":"380px"],
                         content: INSERT_URL
                     });
@@ -359,6 +356,7 @@
                         type: 2,
                         title: "修改",
                         shade: 0.1,
+                        maxmin: true,
                         area: [common.isModile()?"100%":"500px", common.isModile()?"100%":"380px"],
                         content: UPDATE_URL + "?" + PRIMARY_KEY + "=" + value
                     });

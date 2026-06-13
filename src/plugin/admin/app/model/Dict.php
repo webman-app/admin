@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\model;
 
 
@@ -12,10 +14,10 @@ class Dict
 {
     /**
      * 获取字典
-     * @param $name
-     * @return mixed|null
+     * @param string $name
+     * @return array|null
      */
-    public static function get($name)
+    public static function get(string $name): array|null
     {
         $value = Option::where('name', static::dictNameToOptionName($name))->value('value');
         return $value ? json_decode($value, true) : null;
@@ -23,15 +25,14 @@ class Dict
 
     /**
      * 保存字典
-     * @param $name
-     * @param $values
+     * @param string $name
+     * @param array $values
      * @return void
-     * @throws BusinessException
      */
-    public static function save($name, $values)
+    public static function save(string $name, array $values): void
     {
-        if (!preg_match('/[a-zA-Z]/', $name)) {
-            throw new BusinessException('字典名只能包含字母');
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $name)) {
+            throw new BusinessException('字典名只能包含字母数字下划线');
         }
         $option_name = static::dictNameToOptionName($name);
         if (!$option = Option::where('name', $option_name)->first()) {
@@ -48,9 +49,13 @@ class Dict
      * @param array $names
      * @return void
      */
-    public static function delete(array $names)
+    public static function delete(array $names): void
     {
         foreach ($names as $index => $name) {
+            if (!is_string($name)) {
+                unset($names[$index]);
+                continue;
+            }
             $names[$index] = static::dictNameToOptionName($name);
         }
         Option::whereIn('name', $names)->delete();
@@ -86,7 +91,10 @@ class Dict
     {
         $format_values = [];
         foreach ($values as $item) {
-            if (!isset($item['value']) || !isset($item['name'])) {
+            if (!is_array($item) || !isset($item['value']) || !isset($item['name'])) {
+                throw new BusinessException('字典格式错误', 1);
+            }
+            if (!is_scalar($item['value']) || !is_scalar($item['name'])) {
                 throw new BusinessException('字典格式错误', 1);
             }
             $format_values[] =  ['value' => $item['value'], 'name' => $item['name']];

@@ -1,4 +1,7 @@
 <?php
+
+declare(strict_types=1);
+
 namespace plugin\admin\api;
 
 use plugin\admin\app\model\Rule;
@@ -11,23 +14,23 @@ class Menu
 
     /**
      * 根据key获取菜单
-     * @param $key
-     * @return array
+     * @param string $key 菜单 key
+     * @return array|null
      */
-    public static function get($key)
+    public static function get(string $key): ?array
     {
         $menu = Rule::where('key', $key)->first();
-        return $menu ? $menu->toArray() : null;
+        return $menu?->toArray();
     }
 
     /**
      * 根据id获得菜单
-     * @param $id
-     * @return array
+     * @param int $id 菜单 ID
+     * @return array|null
      */
-    public static function find($id): array
+    public static function find(int $id): ?array
     {
-        return Rule::find($id)->toArray();
+        return Rule::find($id)?->toArray();
     }
 
     /**
@@ -35,7 +38,7 @@ class Menu
      * @param array $menu
      * @return int
      */
-    public static function add(array $menu)
+    public static function add(array $menu): int
     {
         $item = new Rule;
         foreach ($menu as $key => $value) {
@@ -50,7 +53,7 @@ class Menu
      * @param array $menu_tree
      * @return void
      */
-    public static function import(array $menu_tree)
+    public static function import(array $menu_tree): void
     {
         if (is_numeric(key($menu_tree)) && !isset($menu_tree['key'])) {
             foreach ($menu_tree as $item) {
@@ -74,10 +77,10 @@ class Menu
 
     /**
      * 删除菜单
-     * @param $key
+     * @param string $key 菜单 key
      * @return void
      */
-    public static function delete($key)
+    public static function delete(string $key): void
     {
         $item = Rule::where('key', $key)->first();
         if (!$item) {
@@ -85,7 +88,7 @@ class Menu
         }
         // 子规则一起删除
         $delete_ids = $children_ids = [$item['id']];
-        while($children_ids) {
+        while ($children_ids) {
             $children_ids = Rule::whereIn('pid', $children_ids)->pluck('id')->toArray();
             $delete_ids = array_merge($delete_ids, $children_ids);
         }
@@ -95,12 +98,12 @@ class Menu
 
     /**
      * 获取菜单中某个(些)字段的值
-     * @param $menu
-     * @param null $column
-     * @param null $index
-     * @return array|mixed
+     * @param array $menu
+     * @param array|string|null $column
+     * @param ?string $index
+     * @return array
      */
-    public static function column($menu, $column = null, $index = null)
+    public static function column(array $menu, array|string|null $column = null, ?string $index = null): array
     {
         $values = [];
         if (is_numeric(key($menu)) && !isset($menu['key'])) {
@@ -112,9 +115,16 @@ class Menu
 
         $children = $menu['children'] ?? [];
         unset($menu['children']);
+        if ($index && !isset($menu[$index])) {
+            foreach ($children as $child) {
+                $values = array_merge($values, static::column($child, $column, $index));
+            }
+            return $values;
+        }
         if ($column === null) {
             if ($index) {
-                $values[$menu[$index]] = $menu;
+                $index_value = $menu[$index];
+                $values[$index_value] = $menu;
             } else {
                 $values[] = $menu;
             }
@@ -125,14 +135,16 @@ class Menu
                     $item[$f] = $menu[$f] ?? null;
                 }
                 if ($index) {
-                    $values[$menu[$index]] = $item;
+                    $index_value = $menu[$index];
+                    $values[$index_value] = $item;
                 } else {
                     $values[] = $item;
                 }
             } else {
                 $value = $menu[$column] ?? null;
                 if ($index) {
-                    $values[$menu[$index]] = $value;
+                    $index_value = $menu[$index];
+                    $values[$index_value] = $value;
                 } else {
                     $values[] = $value;
                 }

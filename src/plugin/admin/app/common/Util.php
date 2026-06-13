@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\common;
 
 use app\process\Monitor;
@@ -16,11 +18,11 @@ class Util
 {
     /**
      * 密码哈希
-     * @param $password
+     * @param string $password
      * @param string $algo
-     * @return false|string|null
+     * @return string
      */
-    public static function passwordHash($password, string $algo = PASSWORD_DEFAULT)
+    public static function passwordHash(string $password, string $algo = PASSWORD_DEFAULT): string
     {
         return password_hash($password, $algo);
     }
@@ -56,10 +58,10 @@ class Util
 
     /**
      * 获取语义化时间
-     * @param $time
-     * @return false|string
+     * @param int|string $time
+     * @return string
      */
-    public static function humanDate($time)
+    public static function humanDate(int|string $time): string
     {
         $timestamp = is_numeric($time) ? $time : strtotime($time);
         $dur = time() - $timestamp;
@@ -78,36 +80,35 @@ class Util
                         if ($dur < 2592000) { // 30天内
                             return floor($dur / 86400) . '天前';
                         } else {
-                            return date('Y-m-d', $timestamp);;
+                            return date('Y-m-d', $timestamp);
                         }
                     }
                 }
             }
         }
-        return date('Y-m-d', $timestamp);
     }
 
     /**
      * 格式化文件大小
-     * @param $file_size
+     * @param int $file_size
      * @return string
      */
-    public static function formatBytes($file_size): string
+    public static function formatBytes(int $file_size): string
     {
         $size = sprintf("%u", $file_size);
         if($size == 0) {
             return("0 Bytes");
         }
         $size_name = array(" Bytes", " KB", " MB", " GB", " TB", " PB", " EB", " ZB", " YB");
-        return round($size/pow(1024, ($i = floor(log($size, 1024)))), 2) . $size_name[$i];
+        return round($size/pow(1024, ($i = floor(log((float)$size, 1024)))), 2) . $size_name[$i];
     }
 
     /**
      * 数据库字符串转义
-     * @param $var
-     * @return false|string
+     * @param string $var
+     * @return string
      */
-    public static function pdoQuote($var)
+    public static function pdoQuote(string $var): string
     {
         return Util::db()->getPdo()->quote($var);
     }
@@ -128,11 +129,11 @@ class Util
 
     /**
      * 变量或数组中的元素只能是字母数字下划线组合
-     * @param $var
+     * @param mixed $var
      * @return mixed
      * @throws BusinessException
      */
-    public static function filterAlphaNum($var)
+    public static function filterAlphaNum(mixed $var): mixed
     {
         $vars = (array)$var;
         array_walk_recursive($vars, function ($item) {
@@ -144,12 +145,12 @@ class Util
     }
 
     /**
-     * 变量或数组中的元素只能是字母数字
-     * @param $var
+     * 变量或数组中的元素只能是数字
+     * @param mixed $var
      * @return mixed
      * @throws BusinessException
      */
-    public static function filterNum($var)
+    public static function filterNum(mixed $var): mixed
     {
         $vars = (array)$var;
         array_walk_recursive($vars, function ($item) {
@@ -162,17 +163,13 @@ class Util
 
     /**
      * @desc 检测是否是合法URL Path
-     * @param $var
+     * @param string $var
      * @return string
      * @throws BusinessException
      */
-    public static function filterUrlPath($var): string
+    public static function filterUrlPath(string $var): string
     {
-        if (!is_string($var)) {
-            throw new BusinessException('参数不合法，地址必须是一个字符串！');
-        }
-
-        if (strpos($var, 'https://') === 0 || strpos($var, 'http://') === 0) {
+        if (str_starts_with($var, 'https://') || str_starts_with($var, 'http://')) {
             if (!filter_var($var, FILTER_VALIDATE_URL)) {
                 throw new BusinessException('参数不合法，不是合法的URL地址！');
             }
@@ -184,13 +181,13 @@ class Util
 
     /**
      * 检测是否是合法Path
-     * @param $var
+     * @param string $var
      * @return string
      * @throws BusinessException
      */
-    public static function filterPath($var): string
+    public static function filterPath(string $var): string
     {
-        if (!is_string($var) || !preg_match('/^[a-zA-Z0-9_\-\/]+$/', $var)) {
+        if (!preg_match('/^[a-zA-Z0-9_\-\/]+$/', $var)) {
             throw new BusinessException('参数不合法');
         }
         return $var;
@@ -198,11 +195,14 @@ class Util
 
     /**
      * 类转换为url path
-     * @param $controller_class
+     * @param string $controller_class
      * @return false|string
      */
-    static function controllerToUrlPath($controller_class)
+    public static function controllerToUrlPath(string $controller_class): false|string
     {
+        if ($controller_class === '') {
+            return false;
+        }
         $key = strtolower($controller_class);
         $action = '';
         if (strpos($key, '@')) {
@@ -214,7 +214,7 @@ class Util
             return false;
         }
         $base = '';
-        if (strpos($key, "$prefix\\") === 0) {
+        if (str_starts_with($key, "$prefix\\")) {
             if (count($paths) < 4) {
                 return false;
             }
@@ -230,7 +230,7 @@ class Util
         }
         $suffix = 'controller';
         $code = $base . implode('/', $paths);
-        if (substr($code, -strlen($suffix)) === $suffix) {
+        if (str_ends_with($code, $suffix)) {
             $code = substr($code, 0, -strlen($suffix));
         }
         return $action ? "$code/$action" : $code;
@@ -257,24 +257,21 @@ class Util
 
     /**
      * 转换为小驼峰
-     * @param $value
+     * @param string $value
      * @return string
      */
-    public static function smCamel($value): string
+    public static function smCamel(string $value): string
     {
         return lcfirst(static::camel($value));
     }
 
     /**
      * 获取注释中第一行
-     * @param $comment
-     * @return false|mixed|string
+     * @param string $comment
+     * @return string
      */
-    public static function getCommentFirstLine($comment)
+    public static function getCommentFirstLine(string $comment): string
     {
-        if ($comment === false) {
-            return false;
-        }
         foreach (explode("\n", $comment) as $str) {
             if ($s = trim($str, "*/\ \t\n\r\0\x0B")) {
                 return $s;
@@ -285,7 +282,7 @@ class Util
 
     /**
      * 表单类型到插件的映射
-     * @return \string[][]
+     * @return string[][]
      */
     public static function methodControlMap(): array
     {
@@ -330,10 +327,10 @@ class Util
 
     /**
      * 数据库类型到插件的转换
-     * @param $type
+     * @param mixed $type
      * @return string
      */
-    public static function typeToControl($type): string
+    public static function typeToControl(mixed $type): string
     {
         if (stripos($type, 'int') !== false) {
             return 'inputNumber';
@@ -352,12 +349,15 @@ class Util
 
     /**
      * 数据库类型到表单类型的转换
-     * @param $type
-     * @param $unsigned
+     * @param mixed $type
+     * @param bool $unsigned
      * @return string
      */
-    public static function typeToMethod($type, $unsigned = false)
+    public static function typeToMethod(mixed $type, bool $unsigned = false): string
     {
+        if (!is_string($type)) {
+            return 'string';
+        }
         if (stripos($type, 'int') !== false) {
             $type = str_replace('int', 'Integer', $type);
             return $unsigned ? "unsigned" . ucfirst($type) : lcfirst($type);
@@ -374,12 +374,11 @@ class Util
 
     /**
      * 按表获取摘要
-     * @param $table
-     * @param null $section
-     * @return array|mixed
-     * @throws BusinessException
+     * @param string $table
+     * @param string|null $section
+     * @return mixed
      */
-    public static function getSchema($table, $section = null)
+    public static function getSchema(string $table, ?string $section = null): mixed
     {
         Util::checkTableName($table);
         $database = config('database.connections')['plugin.admin.mysql']['database'];
@@ -396,7 +395,7 @@ class Util
                 'length' => static::getLengthValue($item),
                 'nullable' => $item->IS_NULLABLE !== 'NO',
                 'primary_key' => $item->COLUMN_KEY === 'PRI',
-                'auto_increment' => strpos($item->EXTRA, 'auto_increment') !== false
+                'auto_increment' => str_contains($item->EXTRA, 'auto_increment')
             ];
 
             $forms[$field] = [
@@ -452,17 +451,17 @@ class Util
 
     /**
      * 获取字段长度或默认值
-     * @param $schema
-     * @return mixed|string
+     * @param mixed $schema
+     * @return mixed
      */
-    public static function getLengthValue($schema)
+    public static function getLengthValue(mixed $schema): mixed
     {
         $type = $schema->DATA_TYPE;
         if (in_array($type, ['float', 'decimal', 'double'])) {
-            return "{$schema->NUMERIC_PRECISION},{$schema->NUMERIC_SCALE}";
+            return "$schema->NUMERIC_PRECISION,$schema->NUMERIC_SCALE";
         }
         if ($type === 'enum') {
-            return implode(',', array_map(function($item){
+            return implode(',', array_map(function ($item) {
                 return trim($item, "'");
             }, explode(',', substr($schema->COLUMN_TYPE, 5, -1))));
         }
@@ -477,13 +476,13 @@ class Util
 
     /**
      * 获取控件参数
-     * @param $control
-     * @param $control_args
+     * @param string $control
+     * @param string $control_args
      * @return array
      */
-    public static function getControlProps($control, $control_args): array
+    public static function getControlProps(string $control, string $control_args): array
     {
-        if (!$control_args) {
+        if ($control_args === '') {
             return [];
         }
         $control = strtolower($control);
@@ -498,11 +497,15 @@ class Util
             $values = trim(substr($item, $pos + 1));
             // values = a:v,c:d
             $pos = strpos($values, ':');
-            if ($pos !== false && strpos($values, "#") !== 0) {
+            if ($pos !== false && !str_starts_with($values, "#")) {
                 $options = explode(',', $values);
                 $values = [];
                 foreach ($options as $option) {
-                    [$v, $n] = explode(':', $option);
+                    $option_parts = explode(':', $option, 2);
+                    if (count($option_parts) < 2) {
+                        continue;
+                    }
+                    [$v, $n] = $option_parts;
                     if (in_array($control, ['select', 'selectmulti', 'treeselect', 'treemultiselect']) && $name == 'data') {
                         $values[] = ['value' => $v, 'name' => $n];
                     } else {
@@ -513,15 +516,14 @@ class Util
             $props[$name] = $values;
         }
         return $props;
-
     }
 
     /**
      * 获取某个composer包的版本
      * @param string $package
-     * @return mixed|string
+     * @return string
      */
-    public static function getPackageVersion(string $package)
+    public static function getPackageVersion(string $package): string
     {
         $installed_php = base_path('vendor/composer/installed.php');
         if (is_file($installed_php)) {
@@ -530,18 +532,17 @@ class Util
         return substr($packages['versions'][$package]['version'] ?? 'unknown  ', 0, -2);
     }
 
-
     /**
      * Reload webman
      * @return bool
      */
-    public static function reloadWebman()
+    public static function reloadWebman(): bool
     {
         if (function_exists('posix_kill')) {
             try {
                 posix_kill(posix_getppid(), SIGUSR1);
                 return true;
-            } catch (Throwable $e) {}
+            } catch (Throwable) {}
         } else {
             Timer::add(1, function () {
                 Worker::stopAll();
@@ -554,7 +555,7 @@ class Util
      * Pause file monitor
      * @return void
      */
-    public static function pauseFileMonitor()
+    public static function pauseFileMonitor(): void
     {
         if (method_exists(Monitor::class, 'pause')) {
             Monitor::pause();
@@ -565,7 +566,7 @@ class Util
      * Resume file monitor
      * @return void
      */
-    public static function resumeFileMonitor()
+    public static function resumeFileMonitor(): void
     {
         if (method_exists(Monitor::class, 'resume')) {
             Monitor::resume();

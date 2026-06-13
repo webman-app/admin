@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace plugin\admin\app\controller;
 
 use Doctrine\Inflector\InflectorFactory;
@@ -40,8 +42,7 @@ class TableController extends Base
      */
     public function view(Request $request): Response
     {
-        $table = $request->get('table');
-        $table = Util::filterAlphaNum($table);
+        $table = $this->normalizeTableName($request->get('table'));
         $form = Layui::buildForm($table, 'search');
         $table_info = Util::getSchema($table, 'table');
         $primary_key = $table_info['primary_key'][0] ?? null;
@@ -61,12 +62,16 @@ class TableController extends Base
     public function show(Request $request): Response
     {
         $table_name = $request->get('table_name', '');
+        if (!is_string($table_name)) {
+            $table_name = '';
+        }
+        $table_name = $table_name === '' ? '' : Util::filterAlphaNum($table_name);
         $limit = (int)$request->get('limit', 10);
         $page = (int)$request->get('page', 1);
         $offset = ($page - 1) * $limit;
         $database = config('database.connections')['plugin.admin.mysql']['database'];
         $field = $request->get('field', 'TABLE_NAME');
-        $field = Util::filterAlphaNum($field);
+        $field = is_string($field) && $field !== '' ? Util::filterAlphaNum($field) : 'TABLE_NAME';
         $order = $request->get('order', 'asc');
         $allow_column = ['TABLE_NAME', 'TABLE_COMMENT', 'ENGINE', 'TABLE_ROWS', 'CREATE_TIME', 'UPDATE_TIME', 'TABLE_COLLATION'];
         if (!in_array($field, $allow_column)) {
@@ -82,8 +87,8 @@ class TableController extends Base
             foreach ($table_names as $table_name) {
                 $table_rows_count[$table_name] = Util::db()->table($table_name)->count();
             }
-            foreach ($tables as $key => $table) {
-                $tables[$key]->TABLE_ROWS = $table_rows_count[$table->TABLE_NAME] ?? $table->TABLE_ROWS;
+            foreach ($tables as $table) {
+                $table->TABLE_ROWS = $table_rows_count[$table->TABLE_NAME] ?? $table->TABLE_ROWS;
             }
         }
 
@@ -99,14 +104,11 @@ class TableController extends Base
     public function create(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            return view('table/create', []);
+            return view('table/create');
         }
         $data = $request->post();
-        $table_name = Util::filterAlphaNum($data['table']);
-        $table_comment = Util::pdoQuote($data['table_comment']);
-        $columns = $data['columns'];
-        $forms = $data['forms'];
-        $keys = $data['keys'];
+        [$table_name, $table_comment, $columns, $forms, $keys] = $this->normalizeStructureInput($data);
+        $table_comment = Util::pdoQuote($table_comment);
 
         $primary_key_count = 0;
         foreach ($columns as $index => $item) {
@@ -186,7 +188,7 @@ class TableController extends Base
         }
         $form_schema_map = json_encode($form_schema_map, JSON_UNESCAPED_UNICODE);
         $this->updateSchemaOption($table_name, $form_schema_map);
-        return $this->json(0, 'ok');
+        return $this->json(0);
     }
 
     /**
@@ -201,12 +203,8 @@ class TableController extends Base
             return view('table/modify', ['table' => $request->get('table')]);
         }
         $data = $request->post();
-        $old_table_name = Util::filterAlphaNum($data['old_table']);
-        $table_name = Util::filterAlphaNum($data['table']);
-        $table_comment = $data['table_comment'];
-        $columns = $data['columns'];
-        $forms = $data['forms'];
-        $keys = $data['keys'];
+        $old_table_name = $this->normalizeTableName($data['old_table'] ?? '');
+        [$table_name, $table_comment, $columns, $forms, $keys] = $this->normalizeStructureInput($data);
         $primary_key = null;
         $auto_increment_column = null;
         $schema = Util::getSchema($old_table_name);
@@ -333,7 +331,6 @@ class TableController extends Base
                 if ($old_key && ($key['type'] != $old_key['type'] || $key['columns'] != implode(',', $old_key['columns']))) {
                     $old_key = [];
                     unset($old_keys[$key_name]);
-                    echo "Drop Index $key_name\n";
                     $table->dropIndex($key_name);
                 }
                 // 重新建立索引
@@ -345,7 +342,6 @@ class TableController extends Base
                         $table->unique($columns, $name);
                         continue;
                     }
-                    echo "Create Index $key_name\n";
                     $table->index($columns, $name);
                 }
             }
@@ -355,7 +351,6 @@ class TableController extends Base
             $old_keys_names = array_column($old_keys, 'name');
             $drop_keys_names = array_diff($old_keys_names, $exists_key_names);
             foreach ($drop_keys_names as $name) {
-                echo "Drop Index $name\n";
                 $table->dropIndex($name);
             }
         });
@@ -395,10 +390,13 @@ class TableController extends Base
      */
     public function crud(Request $request): Response
     {
-        $table_name = $request->input('table');
+        $table_name = $this->normalizeTableName($request->input('table'));
+        if ($table_name === '') {
+            throw new BusinessException('数据表不存在');
+        }
         Util::checkTableName($table_name);
         $prefix = 'wa_';
-        $table_basename = strpos($table_name, $prefix) === 0 ? substr($table_name, strlen($prefix)) : $table_name;
+        $table_basename = str_starts_with($table_name, $prefix) ? substr($table_name, strlen($prefix)) : $table_name;
         $inflector = InflectorFactory::create()->build();
         $model_class = $inflector->classify($inflector->singularize($table_basename));
         $base_path = '/app/admin';
@@ -410,11 +408,16 @@ class TableController extends Base
             ]);
         }
         $title = $request->post('title');
-        $pid = $request->post('pid', 0);
+        $pid = $request->post('pid');
         $icon = $request->post('icon', '');
-        $controller_file = '/' . trim($request->post('controller', ''), '/');
-        $model_file = '/' . trim($request->post('model', ''), '/');
+        $controller_input = $request->post('controller', '');
+        $model_input = $request->post('model', '');
         $overwrite = $request->post('overwrite');
+        if (!is_string($title) || !is_scalar($pid) || !is_string($icon) || !is_string($controller_input) || !is_string($model_input)) {
+            return $this->json(1, '生成参数错误');
+        }
+        $controller_file = '/' . trim($controller_input, '/');
+        $model_file = '/' . trim($model_input, '/');
         if ($controller_file === '/' || $model_file === '/') {
             return $this->json(1, '控制器和model不能为空');
         }
@@ -454,7 +457,7 @@ class TableController extends Base
 
         $explode = explode('/', trim($controller_path, '/'));
         $plugin = '';
-        if (strpos(strtolower($controller_file), '/controller/') === false) {
+        if (!str_contains(strtolower($controller_file), '/controller/')) {
             return $this->json(2, '控制器必须在controller目录下');
         }
         if ($explode[0] === 'plugin') {
@@ -488,7 +491,7 @@ class TableController extends Base
             $controller_class = $controller_file_name;
             $controller_namespace = str_replace('/', '\\', trim($controller_path, '/'));
             // 创建controller
-            $controller_url_name = $controller_suffix && substr($controller_class, -strlen($controller_suffix)) === $controller_suffix ? substr($controller_class, 0, -strlen($controller_suffix)) : $controller_class;
+            $controller_url_name = $controller_suffix && str_ends_with($controller_class, $controller_suffix) ? substr($controller_class, 0, -strlen($controller_suffix)) : $controller_class;
             $controller_url_name = str_replace('_', '-', $inflector->tableize($controller_url_name));
 
             if ($plugin) {
@@ -532,23 +535,27 @@ class TableController extends Base
         $menu->open_type = '_iframe';
         $menu->save();
 
-        $roles = admin('roles');
-        $rules = Role::whereIn('id', $roles)->pluck('rules');
+        $role = admin('role');
+        $role_ids = is_array($role) ? $role : [$role];
+        $role_ids = array_filter($role_ids, static function ($role_id) {
+            return is_scalar($role_id) && $role_id !== '';
+        });
+        $rules = Role::whereIn('id', $role_ids)->pluck('rules');
         $rule_ids = [];
         foreach ($rules as $rule_string) {
-            if (!$rule_string) {
+            if (!is_string($rule_string) || $rule_string === '') {
                 continue;
             }
             $rule_ids = array_merge($rule_ids, explode(',', $rule_string));
         }
 
         // 不是超级管理员，则需要给当前管理员这个菜单的权限
-        if (!in_array('*', $rule_ids) && $roles) {
-            $role = Role::find(current($roles));
-            if ($role) {
-                $role->rules .= ",{$menu->id}";
+        if (!in_array('*', $rule_ids) && $role) {
+            $role_model = Role::find(current($role_ids));
+            if ($role_model) {
+                $role_model->rules .= ",{$menu->id}";
+                $role_model->save();
             }
-            $role->save();
         }
 
         return $this->json(0);
@@ -561,8 +568,9 @@ class TableController extends Base
      * @param $file
      * @param $table
      * @return void
+     * @throws Throwable
      */
-    protected function createModel($class, $namespace, $file, $table)
+    protected function createModel($class, $namespace, $file, $table): void
     {
         $this->mkdir($file);
         $table_val = "'$table'";
@@ -571,15 +579,14 @@ class TableController extends Base
         $timestamps = '';
         $incrementing = '';
         $columns = [];
-        try {
-            $database = config('database.connections')['plugin.admin.mysql']['database'];
-            //plugin.admin.mysql
-            foreach (Util::db()->select("select COLUMN_NAME,DATA_TYPE,COLUMN_KEY,COLUMN_COMMENT from INFORMATION_SCHEMA.COLUMNS where table_name = '$table' and table_schema = '$database' order by ORDINAL_POSITION") as $item) {
-                if ($item->COLUMN_KEY === 'PRI') {
-                    $pk = $item->COLUMN_NAME;
-                    $item->COLUMN_COMMENT .= '(主键)';
-                    if (strpos(strtolower($item->DATA_TYPE), 'int') === false) {
-                        $incrementing = <<<EOF
+        $database = config('database.connections')['plugin.admin.mysql']['database'];
+        //plugin.admin.mysql
+        foreach (Util::db()->select("select COLUMN_NAME,DATA_TYPE,COLUMN_KEY,COLUMN_COMMENT from INFORMATION_SCHEMA.COLUMNS where table_name = '$table' and table_schema = '$database' order by ORDINAL_POSITION") as $item) {
+            if ($item->COLUMN_KEY === 'PRI') {
+                $pk = $item->COLUMN_NAME;
+                $item->COLUMN_COMMENT .= '(主键)';
+                if (!str_contains(strtolower($item->DATA_TYPE), 'int')) {
+                    $incrementing = <<<EOF
 /**
      * Indicates if the model's ID is auto-incrementing.
      *
@@ -588,14 +595,11 @@ class TableController extends Base
     public \$incrementing = false;
 
 EOF;
-                    }
                 }
-                $type = $this->getType($item->DATA_TYPE);
-                $properties .= " * @property $type \${$item->COLUMN_NAME} {$item->COLUMN_COMMENT}\n";
-                $columns[$item->COLUMN_NAME] = $item->COLUMN_NAME;
             }
-        } catch (Throwable $e) {
-            echo $e;
+            $type = $this->getType($item->DATA_TYPE);
+            $properties .= " * @property $type \${$item->COLUMN_NAME} {$item->COLUMN_COMMENT}\n";
+            $columns[$item->COLUMN_NAME] = $item->COLUMN_NAME;
         }
         if (!isset($columns['created_at']) || !isset($columns['updated_at'])) {
             $timestamps = <<<EOF
@@ -655,7 +659,7 @@ EOF;
      * @param $template_path
      * @return void
      */
-    protected function createController($controller_class, $namespace, $file, $model_class, $model_namespace, $name, $template_path)
+    protected function createController($controller_class, $namespace, $file, $model_class, $model_namespace, $name, $template_path): void
     {
         $model_class_alias = $model_class;
         if (strtolower($model_class) === strtolower($controller_class)) {
@@ -741,13 +745,12 @@ EOF;
      * 创建控制器
      * @param $template_file_path
      * @param $table
-     * @param $template_path
      * @param $url_path_base
      * @param $primary_key
      * @param $controller_class_with_namespace
      * @return void
      */
-    protected function createTemplate($template_file_path, $table, $url_path_base, $primary_key, $controller_class_with_namespace)
+    protected function createTemplate($template_file_path, $table, $url_path_base, $primary_key, $controller_class_with_namespace): void
     {
 
         $this->mkdir($template_file_path . '/index.html');
@@ -1226,7 +1229,7 @@ EOF;
      * @param $file
      * @return void
      */
-    protected function mkdir($file)
+    protected function mkdir($file): void
     {
         $path = pathinfo($file, PATHINFO_DIRNAME);
         if (!is_dir($path)) {
@@ -1246,7 +1249,7 @@ EOF;
         $page = $request->get('page', 1);
         $field = $request->get('field');
         $order = $request->get('order', 'asc');
-        $table = Util::filterAlphaNum($request->get('table', ''));
+        $table = $this->normalizeTableName($request->get('table', ''));
         $format = $request->get('format', 'normal');
         $limit = $request->get('limit', $format === 'tree' ? 5000 : 10);
 
@@ -1266,6 +1269,9 @@ EOF;
             }
             if (isset($allow_column[$column])) {
                 if (is_array($value)) {
+                    if (!$this->isValidQueryCondition($value)) {
+                        continue;
+                    }
                     if ($value[0] === 'like') {
                         $paginator = $paginator->where($column, 'like', "%$value[1]%");
                     } elseif (in_array($value[0], ['>', '=', '<', '<>', 'not like'])) {
@@ -1288,9 +1294,9 @@ EOF;
                 $items_map[$item->id] = (array)$item;
             }
             $formatted_items = [];
-            foreach ($items_map as $index => $item) {
+            foreach ($items_map as $item) {
                 if ($item['pid'] && isset($items_map[$item['pid']])) {
-                    $items_map[$item['pid']]['children'][] = &$items_map[$index];
+                    $items_map[$item['pid']]['children'][] = &$item;
                 }
             }
             foreach ($items_map as $item) {
@@ -1314,14 +1320,14 @@ EOF;
     public function insert(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            $table = $request->get('table');
+            $table = $this->normalizeTableName($request->get('table'));
             $form = Layui::buildForm($table);
             return view('table/insert', [
                 'form' => $form,
                 'table' => $table
             ]);
         }
-        $table = Util::filterAlphaNum($request->input('table', ''));
+        $table = $this->normalizeTableName($request->input('table', ''));
         $data = $request->post();
         $allow_column = Util::db()->select("desc `$table`");
         if (!$allow_column) {
@@ -1334,14 +1340,17 @@ EOF;
                 continue;
             }
             // 非字符串类型传空则为null
-            if ($item === '' && strpos(strtolower($columns[$col]), 'varchar') === false && strpos(strtolower($columns[$col]), 'text') === false) {
+            if ($item === '' && !str_contains(strtolower($columns[$col]), 'varchar') && !str_contains(strtolower($columns[$col]), 'text')) {
                 $data[$col] = null;
             }
             if (is_array($item)) {
-                $data[$col] = implode(',', $item);
-                continue;
+                $data[$col] = $this->normalizeRecordInputValue($item);
+                $item = $data[$col];
             }
             if ($col === 'password') {
+                if (!is_scalar($data[$col]) && $data[$col] !== null) {
+                    throw new BusinessException('密码参数错误');
+                }
                 $data[$col] = Util::passwordHash($item);
             }
         }
@@ -1353,7 +1362,7 @@ EOF;
             $data['updated_at'] = $datetime;
         }
         $id = Util::db()->table($table)->insertGetId($data);
-        return $this->json(0, $id);
+        return $this->json(0, (string)$id);
     }
 
     /**
@@ -1365,10 +1374,11 @@ EOF;
     public function update(Request $request): Response
     {
         if ($request->method() === 'GET') {
-            $table = $request->get('table');
+            $table = $this->normalizeTableName($request->get('table'));
             $table_info = Util::getSchema($table, 'table');
             $primary_key = $table_info['primary_key'][0] ?? null;
-            $value = htmlspecialchars($request->get($primary_key, ''));
+            $raw_value = $request->get($primary_key, '');
+            $value = is_scalar($raw_value) ? htmlspecialchars((string)$raw_value) : '';
             $form = Layui::buildForm($table, 'update');
             return view('table/update', [
                 'primary_key' => $primary_key,
@@ -1377,7 +1387,7 @@ EOF;
                 'table' => $table
             ]);
         }
-        $table = Util::filterAlphaNum($request->post('table'));
+        $table = $this->normalizeTableName($request->post('table'));
         $table_info = Util::getSchema($table, 'table');
         $primary_keys = $table_info['primary_key'];
         if (empty($primary_keys)) {
@@ -1388,6 +1398,9 @@ EOF;
         }
         $primary_key = $primary_keys[0];
         $value = $request->post($primary_key);
+        if (!is_scalar($value) && $value !== null) {
+            return $this->json(1, '主键参数错误');
+        }
         $data = $request->post();
         $allow_column = Util::db()->select("desc `$table`");
         if (!$allow_column) {
@@ -1400,13 +1413,17 @@ EOF;
                 continue;
             }
             // 非字符串类型传空则为null
-            if ($item === '' && strpos(strtolower($columns[$col]), 'varchar') === false && strpos(strtolower($columns[$col]), 'text') === false) {
+            if ($item === '' && !str_contains(strtolower($columns[$col]), 'varchar') && !str_contains(strtolower($columns[$col]), 'text')) {
                 $data[$col] = null;
             }
             if (is_array($item)) {
-                $data[$col] = implode(',', $item);
+                $data[$col] = $this->normalizeRecordInputValue($item);
+                $item = $data[$col];
             }
             if ($col === 'password') {
+                if (!is_scalar($data[$col]) && $data[$col] !== null) {
+                    throw new BusinessException('密码参数错误');
+                }
                 // 密码为空，则不更新密码
                 if ($item == '') {
                     unset($data[$col]);
@@ -1424,6 +1441,209 @@ EOF;
     }
 
     /**
+     * 归一化记录表单字段值
+     * @param mixed $item 字段值
+     * @return mixed
+     * @throws BusinessException
+     */
+    protected function normalizeRecordInputValue(mixed $item): mixed
+    {
+        if (!is_array($item)) {
+            return $item;
+        }
+        foreach ($item as $value) {
+            if (!is_scalar($value) && $value !== null) {
+                throw new BusinessException('参数错误');
+            }
+        }
+        return implode(',', $item);
+    }
+
+    /**
+     * 归一化数据表名
+     * @param mixed $table 表名
+     * @return string
+     * @throws BusinessException
+     */
+    protected function normalizeTableName(mixed $table): string
+    {
+        if (!is_string($table)) {
+            return '';
+        }
+        return Util::filterAlphaNum($table);
+    }
+
+    /**
+     * 归一化表结构提交数据
+     * @param array $data 表结构数据
+     * @return array
+     * @throws BusinessException
+     */
+    protected function normalizeStructureInput(array $data): array
+    {
+        $table_name = $this->normalizeTableName($data['table'] ?? '');
+        $table_comment = $this->scalarTableValue($data['table_comment'] ?? '');
+        $columns = $data['columns'] ?? [];
+        $forms = $data['forms'] ?? [];
+        $keys = $data['keys'] ?? [];
+        if (!is_array($columns) || !is_array($forms) || !is_array($keys)) {
+            throw new BusinessException('表结构参数错误');
+        }
+        return [
+            $table_name,
+            $table_comment,
+            $this->normalizeColumnDefinitions($columns),
+            $this->normalizeFormDefinitions($forms),
+            $this->normalizeIndexDefinitions($keys),
+        ];
+    }
+
+    /**
+     * 归一化字段定义
+     * @param array $columns 字段定义
+     * @return array
+     * @throws BusinessException
+     */
+    protected function normalizeColumnDefinitions(array $columns): array
+    {
+        $result = [];
+        foreach ($columns as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $field = $this->scalarTableValue($item['field'] ?? '');
+            $field = trim($field);
+            if ($field === '') {
+                continue;
+            }
+            $item['field'] = Util::filterAlphaNum($field);
+            $item['old_field'] = $this->scalarTableValue($item['old_field'] ?? '');
+            $item['type'] = $this->scalarTableValue($item['type'] ?? '');
+            $item['length'] = $this->scalarTableValue($item['length'] ?? '');
+            $item['comment'] = $this->scalarTableValue($item['comment'] ?? '');
+            $item['nullable'] = !empty($item['nullable']);
+            $item['primary_key'] = !empty($item['primary_key']);
+            $item['auto_increment'] = !empty($item['auto_increment']);
+            $item['default'] = $item['default'] ?? null;
+            if ($item['default'] !== null && !is_scalar($item['default'])) {
+                throw new BusinessException('表结构参数错误');
+            }
+            $result[] = $item;
+        }
+        return $result;
+    }
+
+    /**
+     * 归一化表单定义
+     * @param array $forms 表单定义
+     * @return array
+     * @throws BusinessException
+     */
+    protected function normalizeFormDefinitions(array $forms): array
+    {
+        $result = [];
+        foreach ($forms as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $field = trim($this->scalarTableValue($item['field'] ?? ''));
+            if ($field === '') {
+                continue;
+            }
+            $item['field'] = Util::filterAlphaNum($field);
+            $result[] = $item;
+        }
+        return $result;
+    }
+
+    /**
+     * 归一化索引定义
+     * @param array $keys 索引定义
+     * @return array
+     * @throws BusinessException
+     */
+    protected function normalizeIndexDefinitions(array $keys): array
+    {
+        $result = [];
+        foreach ($keys as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $name = trim($this->scalarTableValue($item['name'] ?? ''));
+            $columns = $this->normalizeIndexColumns($item['columns'] ?? '');
+            if ($name === '' || $columns === '') {
+                continue;
+            }
+            $item['name'] = Util::filterAlphaNum($name);
+            $item['old_name'] = $this->scalarTableValue($item['old_name'] ?? '');
+            $item['columns'] = $columns;
+            $item['type'] = ($item['type'] ?? '') === 'unique' ? 'unique' : 'index';
+            $result[] = $item;
+        }
+        return $result;
+    }
+
+    /**
+     * 归一化索引字段
+     * @param mixed $columns 索引字段
+     * @return string
+     * @throws BusinessException
+     */
+    protected function normalizeIndexColumns(mixed $columns): string
+    {
+        if (is_array($columns)) {
+            $items = [];
+            foreach ($columns as $column) {
+                $column = trim($this->scalarTableValue($column));
+                if ($column !== '') {
+                    $items[] = Util::filterAlphaNum($column);
+                }
+            }
+            return implode(',', $items);
+        }
+        if (!is_scalar($columns)) {
+            throw new BusinessException('表结构参数错误');
+        }
+        $items = [];
+        foreach (explode(',', (string)$columns) as $column) {
+            $column = trim($column);
+            if ($column !== '') {
+                $items[] = Util::filterAlphaNum($column);
+            }
+        }
+        return implode(',', $items);
+    }
+
+    /**
+     * 归一化数据表名列表
+     * @param mixed $tables 表名列表
+     * @return array
+     * @throws BusinessException
+     */
+    protected function normalizeTableNameList(mixed $tables): array
+    {
+        $result = [];
+        foreach ((array)$tables as $table) {
+            $table = $this->normalizeTableName($table);
+            if ($table !== '') {
+                $result[] = $table;
+            }
+        }
+        return array_values(array_unique($result));
+    }
+
+    /**
+     * 归一化表结构标量值
+     * @param mixed $value 原始值
+     * @param string $default 默认值
+     * @return string
+     */
+    protected function scalarTableValue(mixed $value, string $default = ''): string
+    {
+        return is_scalar($value) ? (string)$value : $default;
+    }
+
+    /**
      * 删除记录
      * @param Request $request
      * @return Response
@@ -1431,7 +1651,7 @@ EOF;
      */
     public function delete(Request $request): Response
     {
-        $table = $request->post('table');
+        $table = $this->normalizeTableName($request->post('table', ''));
         $table_info = Util::getSchema($table, 'table');
         $primary_keys = $table_info['primary_key'];
         if (empty($primary_keys)) {
@@ -1442,8 +1662,40 @@ EOF;
         }
         $primary_key = $primary_keys[0];
         $value = (array)$request->post($primary_key);
+        foreach ($value as $item) {
+            if (!is_scalar($item) && $item !== null) {
+                return $this->json(1, '主键参数错误');
+            }
+        }
         Util::db()->table($table)->whereIn($primary_key, $value)->delete();
         return $this->json(0);
+    }
+
+    /**
+     * 判断查询条件是否可安全参与构造
+     * @param mixed $value 查询条件
+     * @return bool
+     */
+    protected function isValidQueryCondition(mixed $value): bool
+    {
+        if (!is_array($value)) {
+            return is_scalar($value) || $value === null;
+        }
+        if (!isset($value[0]) || !is_scalar($value[0])) {
+            return false;
+        }
+        if (!isset($value[1])) {
+            return false;
+        }
+        if (is_array($value[1])) {
+            foreach ($value[1] as $item) {
+                if (!is_scalar($item) && $item !== null) {
+                    return false;
+                }
+            }
+            return false;
+        }
+        return is_scalar($value[1]);
     }
 
 
@@ -1454,12 +1706,12 @@ EOF;
      */
     public function drop(Request $request): Response
     {
-        $tables = $request->post('tables');
+        $tables = $this->normalizeTableNameList($request->post('tables'));
         if (!$tables) {
             return $this->json(0, 'not found');
         }
         $prefix = 'wa_';
-        $table_not_allow_drop = ["{$prefix}admins", "{$prefix}users", "{$prefix}options", "{$prefix}roles", "{$prefix}rules", "{$prefix}admin_roles", "{$prefix}uploads"];
+        $table_not_allow_drop = ["{$prefix}users", "{$prefix}options", "{$prefix}roles", "{$prefix}rules", "{$prefix}uploads"];
         if ($found = array_intersect($tables, $table_not_allow_drop)) {
             return $this->json(400, implode(',', $found) . '不允许删除');
         }
@@ -1468,7 +1720,7 @@ EOF;
             // 删除schema
             Util::db()->table('wa_options')->where('name', "table_form_schema_$table")->delete();
         }
-        return $this->json(0, 'ok');
+        return $this->json(0);
     }
 
     /**
@@ -1478,7 +1730,7 @@ EOF;
      */
     public function schema(Request $request): Response
     {
-        $table = $request->get('table');
+        $table = $this->normalizeTableName($request->get('table'));
         $data = Util::getSchema($table);
 
         return $this->json(0, 'ok', [
@@ -1491,13 +1743,23 @@ EOF;
 
     /**
      * 创建字段
-     * @param $column
+     * @param mixed $column 字段定义
      * @param Blueprint $table
      * @return mixed
      */
-    protected function createColumn($column, Blueprint $table)
+    protected function createColumn(mixed $column, Blueprint $table): mixed
     {
-        $method = $column['type'];
+        $method = Util::filterAlphaNum($this->scalarTableValue($column['type'] ?? ''));
+        if ($method === '') {
+            throw new BusinessException('表结构参数错误');
+        }
+        $column['field'] = $this->scalarTableValue($column['field'] ?? '');
+        $column['length'] = $this->scalarTableValue($column['length'] ?? '');
+        $column['comment'] = $this->scalarTableValue($column['comment'] ?? '');
+        $column['nullable'] = !empty($column['nullable']);
+        $column['primary_key'] = !empty($column['primary_key']);
+        $column['auto_increment'] = !empty($column['auto_increment']);
+        $column['default'] = $column['default'] ?? null;
         $args = [$column['field']];
         if (stripos($method, 'int') !== false) {
             // auto_increment 会自动成为主键
@@ -1548,22 +1810,23 @@ EOF;
      * 更改字段
      * @param $column
      * @param $table
-     * @return mixed
+     * @return void
      * @throws BusinessException
      */
-    protected function modifyColumn($column, $table)
+    protected function modifyColumn($column, $table): void
     {
         $table = Util::filterAlphaNum($table);
-        $method = Util::filterAlphaNum($column['type']);
-        $field = Util::filterAlphaNum($column['field']);
-        $old_field = Util::filterAlphaNum($column['old_field'] ?? null);
-        $nullable = $column['nullable'];
-        $default = $column['default'] !== null ? Util::pdoQuote($column['default']) : null;
-        $comment = Util::pdoQuote($column['comment']);
-        $auto_increment = $column['auto_increment'];
-        $length = (int)$column['length'];
+        $method = Util::filterAlphaNum($this->scalarTableValue($column['type'] ?? ''));
+        $field = Util::filterAlphaNum($this->scalarTableValue($column['field'] ?? ''));
+        $old_field = Util::filterAlphaNum($this->scalarTableValue($column['old_field'] ?? ''));
+        $nullable = !empty($column['nullable']);
+        $default = ($column['default'] ?? null) !== null ? Util::pdoQuote($column['default']) : null;
+        $comment = Util::pdoQuote($this->scalarTableValue($column['comment'] ?? ''));
+        $auto_increment = !empty($column['auto_increment']);
+        $length_raw = $this->scalarTableValue($column['length'] ?? '0', '0');
+        $length = (int)$length_raw;
 
-        if ($column['primary_key']) {
+        if (!empty($column['primary_key'])) {
             $default = null;
         }
 
@@ -1598,7 +1861,7 @@ EOF;
                     $sql .= $length ? "$method($length) " : "$method ";
                     break;
                 case 'enum':
-                    $args = array_map('trim', explode(',', (string)$column['length']));
+                    $args = array_map('trim', explode(',', $length_raw));
                     foreach ($args as $key => $value) {
                         $args[$key] = Util::pdoQuote($value);
                     }
@@ -1607,8 +1870,8 @@ EOF;
                 case 'double':
                 case 'float':
                 case 'decimal':
-                    if (trim($column['length'])) {
-                        $args = array_map('intval', explode(',', $column['length']));
+                    if (trim($length_raw)) {
+                        $args = array_map('intval', explode(',', $length_raw));
                         $args[1] = $args[1] ?? $args[0];
                         $sql .= "$method($args[0], $args[1]) ";
                         break;
@@ -1629,11 +1892,8 @@ EOF;
             $sql .= "DEFAULT $default ";
         }
 
-        if ($comment !== null) {
-            $sql .= "COMMENT $comment ";
-        }
+        $sql .= "COMMENT $comment ";
 
-        echo "$sql\n";
         Util::db()->statement($sql);
     }
 
@@ -1674,28 +1934,15 @@ EOF;
      */
     protected function getType(string $type): string
     {
-        if (strpos($type, 'int') !== false) {
+        if (str_contains($type, 'int')) {
             return 'integer';
         }
-        switch ($type) {
-            case 'varchar':
-            case 'string':
-            case 'text':
-            case 'date':
-            case 'time':
-            case 'guid':
-            case 'datetimetz':
-            case 'datetime':
-            case 'decimal':
-            case 'enum':
-                return 'string';
-            case 'boolean':
-                return 'integer';
-            case 'float':
-                return 'float';
-            default:
-                return 'mixed';
-        }
+        return match ($type) {
+            'varchar', 'string', 'text', 'date', 'time', 'guid', 'datetimetz', 'datetime', 'decimal', 'enum' => 'string',
+            'boolean' => 'integer',
+            'float' => 'float',
+            default => 'mixed',
+        };
     }
 
 }

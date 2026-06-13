@@ -16,14 +16,12 @@ function toggleSearchFormShow()
             toggle();
         });
     }
-    let countPerRow = parseInt($('.top-search-from').width()/$('.layui-form-item').width());
-    if (items.length <= countPerRow) {
-        return;
-    }
+
+    // 始终默认只显示第一行（除最后一个按钮行外），其余隐藏
     btns.removeClass('layui-hide');
     toggle.hide = !toggle.hide;
     if (toggle.hide) {
-        for (let i = countPerRow - 1; i < items.length - 1; i++) {
+        for (let i = 1; i < items.length - 1; i++) {
             $(items[i]).hide();
         }
         return $('.top-search-from .toggle-btn a:last').addClass('layui-hide');

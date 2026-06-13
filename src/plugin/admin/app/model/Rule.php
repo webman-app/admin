@@ -1,8 +1,8 @@
 <?php
 
-namespace plugin\admin\app\model;
+declare(strict_types=1);
 
-use plugin\admin\app\model\Base;
+namespace plugin\admin\app\model;
 
 /**
  * @property integer $id 主键(主键)
@@ -41,8 +41,4 @@ class Rule extends Base
      * @var string
      */
     protected $primaryKey = 'id';
-    
-    
-    
-    
 }
