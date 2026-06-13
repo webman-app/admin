@@ -18,12 +18,16 @@
     "webman/console": "^2.2",
     "ext-json": "*",
     "ext-zip": "*",
-    "ext-pdo": "*"
+    "ext-pdo": "*",
+    "ext-pdo_mysql": "*"
   },
   "autoload": {
     "psr-4": {
       "Webman\\Admin\\": "src",
       "Jenssegers\\Blade\\": "src/blade/"
     }
+  },
+  "replace": {
+    "webman/blade": "self.version"
   }
 }
