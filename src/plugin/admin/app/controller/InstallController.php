@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace plugin\admin\app\controller;
@@ -125,7 +124,6 @@ class InstallController extends Base
 
         $config_content = <<<EOF
 <?php
-
 declare(strict_types=1);
 
 return  [
@@ -152,7 +150,6 @@ EOF;
 
         $think_orm_config = <<<EOF
 <?php
-
 declare(strict_types=1);
 
 return [

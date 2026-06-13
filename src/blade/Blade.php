@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace Jenssegers\Blade;
 
@@ -56,12 +57,12 @@ class Blade implements FactoryContract
         return $this->compiler;
     }
 
-    public function directive(string $name, callable $handler)
+    public function directive(string $name, callable $handler): void
     {
         $this->compiler->directive($name, $handler);
     }
 
-    public function component($class, $alias = null, $prefix = '')
+    public function component($class, $alias = null, $prefix = ''): void
     {
         if (!is_null($alias)) {
             if (!class_exists($alias)) {
@@ -71,7 +72,7 @@ class Blade implements FactoryContract
         $this->compiler->component($class, $alias, $prefix);
     }
     
-    public function if($name, callable $callback)
+    public function if($name, callable $callback): void
     {
         $this->compiler->if($name, $callback);
     }
@@ -120,7 +121,7 @@ class Blade implements FactoryContract
         return call_user_func_array([$this->factory, $method], $params);
     }
 
-    protected function setupContainer(array $viewPaths, string $cachePath)
+    protected function setupContainer(array $viewPaths, string $cachePath): void
     {
         $this->container->bindIf('files', function () {
             return new Filesystem;

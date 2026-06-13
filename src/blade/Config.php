@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace Jenssegers\Blade;
 
@@ -16,7 +17,7 @@ class Config implements ArrayAccess, ConfigContract
      *
      * @var array
      */
-    protected $items = [];
+    protected array $items = [];
 
     /**
      * Create a new configuration repository.
@@ -35,7 +36,7 @@ class Config implements ArrayAccess, ConfigContract
      * @param  string  $key
      * @return bool
      */
-    public function has($key)
+    public function has($key): bool
     {
         return Arr::has($this->items, $key);
     }
@@ -47,7 +48,7 @@ class Config implements ArrayAccess, ConfigContract
      * @param  mixed  $default
      * @return mixed
      */
-    public function get($key, $default = null)
+    public function get($key, $default = null): mixed
     {
         if (is_array($key)) {
             return $this->getMany($key);
@@ -59,10 +60,10 @@ class Config implements ArrayAccess, ConfigContract
     /**
      * Get many configuration values.
      *
-     * @param  array  $keys
+     * @param array $keys
      * @return array
      */
-    public function getMany($keys)
+    public function getMany(array $keys): array
     {
         $config = [];
 
@@ -84,7 +85,7 @@ class Config implements ArrayAccess, ConfigContract
      * @param  mixed  $value
      * @return void
      */
-    public function set($key, $value = null)
+    public function set($key, $value = null): void
     {
         $keys = is_array($key) ? $key : [$key => $value];
 
@@ -100,7 +101,7 @@ class Config implements ArrayAccess, ConfigContract
      * @param  mixed  $value
      * @return void
      */
-    public function prepend($key, $value)
+    public function prepend($key, $value): void
     {
         $array = $this->get($key, []);
 
@@ -116,7 +117,7 @@ class Config implements ArrayAccess, ConfigContract
      * @param  mixed  $value
      * @return void
      */
-    public function push($key, $value)
+    public function push($key, $value): void
     {
         $array = $this->get($key, []);
 
@@ -130,7 +131,7 @@ class Config implements ArrayAccess, ConfigContract
      *
      * @return array
      */
-    public function all()
+    public function all(): array
     {
         return $this->items;
     }
@@ -138,48 +139,48 @@ class Config implements ArrayAccess, ConfigContract
     /**
      * Determine if the given configuration option exists.
      *
-     * @param  string  $key
+     * @param  string  $offset
      * @return bool
      */
-    public function offsetExists($key): bool
+    public function offsetExists($offset): bool
     {
-        return $this->has($key);
+        return $this->has($offset);
     }
 
     /**
      * Get a configuration option.
      *
-     * @param  string  $key
+     * @param  string  $offset
      * @return mixed
      */
     #[\ReturnTypeWillChange]
-    public function offsetGet($key)
+    public function offsetGet($offset): mixed
     {
-        return $this->get($key);
+        return $this->get($offset);
     }
 
     /**
      * Set a configuration option.
      *
-     * @param  string  $key
+     * @param  string  $offset
      * @param  mixed  $value
      * @return void
      */
     #[\ReturnTypeWillChange]
-    public function offsetSet($key, $value)
+    public function offsetSet($offset, mixed $value): void
     {
-        $this->set($key, $value);
+        $this->set($offset, $value);
     }
 
     /**
      * Unset a configuration option.
      *
-     * @param  string  $key
+     * @param  string  $offset
      * @return void
      */
     #[\ReturnTypeWillChange]
-    public function offsetUnset($key)
+    public function offsetUnset($offset): void
     {
-        $this->set($key, null);
+        $this->set($offset);
     }
 }

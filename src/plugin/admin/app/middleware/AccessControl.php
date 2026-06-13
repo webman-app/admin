@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace plugin\admin\app\middleware;
